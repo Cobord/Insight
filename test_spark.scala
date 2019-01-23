@@ -5,7 +5,12 @@ val pi_approx = sc.parallelize(1 to NUM_SAMPLES).filter{_=>
     x*x + y*y < 1}.count()*4.0/(NUM_SAMPLES)
 println("Pi is roughly ${pi_approx}")*/
 
-val text = sc.parallelize("sample_data.txt")
+//val text = sc.textFile("/user/alice.txt")
+val text=sc.textFile("hdfs://ec2-54-82-213-27.compute-1.amazonaws.com:9000/user/alice.txt")
+//val text=sc.textFile("alice.txt")
+val counts = text.flatMap(line=>line.split(" ")).map(word=>(word,1)).reduceByKey(_+_)
+val answer = counts.collect()
+println(answer)
 
 def piecewise_linear(fOfx : Array[(Double,Double)]):Array[((Double,Double),Double)] = {
     val xs = fOfx map {case (x,y) => x}
