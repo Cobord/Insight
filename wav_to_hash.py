@@ -24,10 +24,17 @@ def periodize(signal,len_needed,current_len):
 # or cutting off
 def modify_raw(filename,desiredT):
     freqs, raw_data = wavfile.read(filename)
-    raw_data=raw_data.T[0]
+    stereo=(raw_data.shape[0]==2)
+    if stereo:
+        raw_data=raw_data.T[0]
     currentT=len(raw_data)/freqs
     len_needed=desiredT*freqs
     return periodize(raw_data,len_needed,len(raw_data))
+
+def dumb_version(filename,desired_length):
+    _, raw_data = wavfile.read(filename)
+    raw_data=raw_data.T[0]
+    return (filename,periodize(raw_data,desired_length,len(raw_data)))
 
 # Fourier transform and a simple Gaussian filter
 # this assumes fixed rate
@@ -37,40 +44,42 @@ def with_spectrum(filename,desiredT):
     fourier = fft(raw_data)
     length=int(len(fourier)/2)
     fourier=fourier[:length]
-    fourier=fourier*[2**(-i*i) for i in range(length)]
+    #fourier=fourier*[2**(-i*i) for i in range(length)]
     return (filename,fourier)
 	
 # assume that desiredSteps is smaller than the result of making a desiredT seconds
 # long clip
 def time_domain_version(filename,desiredT,desiredSteps):
-	raw_data=modify_raw(filename,desiredT)
-	return (filename,raw_data[:desiredSteps])
+    raw_data=modify_raw(filename,desiredT)
+    return (filename,periodize(raw_data,desiredSteps,len(raw_data)))
 
 # with the Locally Sensitive Hash provided by these files
 # for spectrum version
 def with_lhs_spectrum(filename,desiredT,all_hyperplanes):
-    _, spectra = with_spectrum(filename,desiredT)
-    needed_length=all_hyperplanes.shape[1]
-    cur_length=len(spectra)
-    if (cur_length>needed_length):
-        spectra=spectra[:needed_length]
-    else:
-        spectra=np.append(spectra,np.zeros(needed_length-cur_length))
+    _, spectra = with_spectrum(filename,desiredT)    
     return (filename,hash_point(spectra,all_hyperplanes,False))
 
 # similarly for time domain
 def with_lhs_time(filename,desiredT,all_hyperplanes):
-	needed_length=all_hyperplanes[1]
-	_, signal = time_domain_version(filename,desiredT,needed_length)
+    needed_length=all_hyperplanes.shape[1]
+    #(_, signal) = time_domain_version(filename,desiredT,needed_length)
+    (_,signal) = dumb_version(filename,1000000)
     return (filename,hash_point(signal,all_hyperplanes,True))
 	
 # compute the hash
 def hash_point(point,all_hyperplanes,is_real):
+    needed_length=all_hyperplanes.shape[1]
+    cur_length=point.shape[0]
+    if (cur_length>needed_length):
+        point=point[:needed_length]
+    else:
+        all_hyperplanes=all_hyperplanes[:][:cur_length]
     if is_real:
         pre_hashed=np.dot(all_hyperplanes,point)
         return list(map(lambda x: x>=0,pre_hashed))
     else:
-        pre_hashed=np.dot(all_hyperplanes,point)-point[0]
+        pre_hashed=np.dot(all_hyperplanes,point)
+        pre_hashed=pre_hashed-point[0]
         hashed=list(map(lambda x: [np.real(x)>=0,np.imag(x)>=0],pre_hashed))
         return [item for sublist in hashed for item in sublist]
 
@@ -92,28 +101,29 @@ num_points=10
 desiredT=30
 sample_rate=.05
 #_,y=with_spectrum("wavFiles/aerosol-can-spray-01.wav",desiredT)
-_,y=time_domain_version("wavFiles/aerosol-can-spray-01.wav",desiredT,1000000) # slightly below the 1.32 for 44 kHz of desiredT=30
-y=len(y)
+#_,y=time_domain_version("wavFiles/aerosol-can-spray-01.wav",desiredT,1000000) # slightly below the 1.32 for 44 kHz of desiredT=30
+#y=len(y)
 
-all_hyperplanes=None
-result=None
-#prefix="hdfs://ec2-54-82-213-27.compute-1.amazonaws.com:9000/user/wavFiles/"
+#prefix="hdfs://ec2-107-22-75-68.compute-1.amazonaws.com:9000/user/wavFiles/"
 prefix="wavFiles/"
-#out_destination="hdfs://ec2-54-82-213-27.compute-1.amazonaws.com:9000/user/saved_lhs_output"
+#out_destination="hdfs://ec2-107-22-75-68.compute-1.amazonaws.com:9000/user/saved_lhs_output"
 out_destination="saved_lhs_output"
 
 def make_hypers_and_hash(y_local):
-	all_hyperplanes=construct_hyperplanes(int(np.log2(num_points)),y_local,False)
-	#result=sc.textFile("wavFilesList2.txt").map(lambda name: prefix+name).sample(False,sample_rate,None).map(lambda file: with_lhs_spectrum(file,desiredT,all_hyperplanes)).map(lambda (filename, res): swap_and_simplify(filename,res))
-	result=sc.textFile("wavFilesList2.txt").map(lambda name: prefix+name).sample(False,sample_rate,None).map(lambda file: with_lhs_time(file,desiredT,all_hyperplanes)).map(lambda (filename, res): swap_and_simplify(filename,res))
-	result.map(lambda (res,filename): str(res)+","+filename).saveAsTextFile(out_destination)
+    all_hyperplanes=construct_hyperplanes(int(np.log2(num_points)),y_local,False)
+    #result=sc.textFile("wavFilesList2.txt").map(lambda name: prefix+name).sample(False,sample_rate,None).map(lambda file: with_lhs_spectrum(file,desiredT,all_hyperplanes)).map(lambda (filename, res): swap_and_simplify(filename,res))
+    result=sc.textFile("wavFilesList2.txt").map(lambda name: prefix+name).sample(False,sample_rate,None).map(lambda file: with_lhs_time(file,desiredT,all_hyperplanes)).map(lambda (filename, res): swap_and_simplify(filename,res))
+    result.map(lambda (res,filename): str(res)+","+filename).saveAsTextFile(out_destination)
+    return (result,all_hyperplanes)
 
-def candidate_neighbors(input_file):
-	_, hash_point=with_lhs_time(input_file,desiredT,all_hyperplanes)
-	hash_point,_ = swap_and_simplify(None,hash_point)
-	return result.filter(lambda (res,filename): res==hash_point).map(lambda (res,filename): filename).collect()
+def candidate_neighbors(input_file,hashes,all_hyperplanes):
+    # load result of hashes from memory into an RDD
+    _, hash_point=with_lhs_time(input_file,desiredT,all_hyperplanes)
+    hash_point,_ = swap_and_simplify(None,hash_point)
+    return hashes.filter(lambda (res,filename): res==hash_point).map(lambda (res,filename): filename).collect()
 
 all_candidate_nbhrs=[]
 for i in range(times_hashed):
-	make_hypers_and_hash(y)
-	all_candidate_nbhrs=all_candidate_nbhrs+candidate_neighbors("wavFiles/aerosol-can-spray-01.wav")
+    (hashes,all_hyperplanes)=make_hypers_and_hash(1000000)
+    all_candidate_nbhrs=all_candidate_nbhrs+candidate_neighbors("wavFiles/aerosol-can-spray-01.wav",hashes,all_hyperplanes)
+print(all_candidate_nbhrs)
