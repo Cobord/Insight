@@ -65,10 +65,13 @@ def swap_and_simplify(filename,res):
     res_as_num=np.array([int(res[i])<<i for i in range(len(res))]).sum()
     return (res_as_num,filename)
 
+times_hashed=1
 num_points=10
 desiredT=30
 _,y=with_spectrum("wavFiles/aerosol-can-spray-01.wav",desiredT)
 all_hyperplanes=construct_hyperplanes(int(np.log2(num_points)),len(y),False)
+# append another copy of all_hyperplanes with different randomness
+#  for each times_hashed
 
 sample_rate=.05
 result=sc.textFile("wavFilesList2.txt").map(lambda name: "wavFiles/"+name).sample(False,sample_rate,None).map(lambda file: with_lhs(file,desiredT,all_hyperplanes)).map(lambda (filename, res): swap_and_simplify(filename,res))
