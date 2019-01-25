@@ -69,8 +69,7 @@ num_points=10
 desiredT=30
 _,y=with_spectrum("wavFiles/aerosol-can-spray-01.wav",desiredT)
 all_hyperplanes=construct_hyperplanes(int(np.log2(num_points)),len(y),False)
-    
-result=sc.textFile("wavFilesList2.txt").map(lambda name: "wavFiles/"+name).sample(False,num_points/328.0,None).map(lambda file: with_lhs(file,desiredT,all_hyperplanes)).map(lambda (filename, res): swap_and_simplify(filename,res))
 
-answer=result.collect()
-print(answer)
+sample_rate=.05
+result=sc.textFile("wavFilesList2.txt").map(lambda name: "wavFiles/"+name).sample(False,sample_rate,None).map(lambda file: with_lhs(file,desiredT,all_hyperplanes)).map(lambda (filename, res): swap_and_simplify(filename,res))
+result.map(lambda (res,filename): str(res)+","+filename).saveAsTextFile("saved_lhs_output")
