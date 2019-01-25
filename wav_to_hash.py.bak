@@ -90,30 +90,22 @@ def swap_and_simplify(filename,res):
 times_hashed=1
 num_points=10
 desiredT=30
-sample_rate=.05
 #_,y=with_spectrum("wavFiles/aerosol-can-spray-01.wav",desiredT)
 _,y=time_domain_version("wavFiles/aerosol-can-spray-01.wav",desiredT,1000000) # slightly below the 1.32 for 44 kHz of desiredT=30
-y=len(y)
+all_hyperplanes=construct_hyperplanes(int(np.log2(num_points)),len(y),False)
+# append another copy of all_hyperplanes with different randomness
+#  for each times_hashed
 
-all_hyperplanes=None
-result=None
+sample_rate=.05
 #prefix="hdfs://ec2-54-82-213-27.compute-1.amazonaws.com:9000/user/wavFiles/"
 prefix="wavFiles/"
 #out_destination="hdfs://ec2-54-82-213-27.compute-1.amazonaws.com:9000/user/saved_lhs_output"
 out_destination="saved_lhs_output"
-
-def make_hypers_and_hash(y_local):
-	all_hyperplanes=construct_hyperplanes(int(np.log2(num_points)),y_local,False)
-	#result=sc.textFile("wavFilesList2.txt").map(lambda name: prefix+name).sample(False,sample_rate,None).map(lambda file: with_lhs_spectrum(file,desiredT,all_hyperplanes)).map(lambda (filename, res): swap_and_simplify(filename,res))
-	result=sc.textFile("wavFilesList2.txt").map(lambda name: prefix+name).sample(False,sample_rate,None).map(lambda file: with_lhs_time(file,desiredT,all_hyperplanes)).map(lambda (filename, res): swap_and_simplify(filename,res))
-	result.map(lambda (res,filename): str(res)+","+filename).saveAsTextFile(out_destination)
+#result=sc.textFile("wavFilesList2.txt").map(lambda name: prefix+name).sample(False,sample_rate,None).map(lambda file: with_lhs_spectrum(file,desiredT,all_hyperplanes)).map(lambda (filename, res): swap_and_simplify(filename,res))
+result=sc.textFile("wavFilesList2.txt").map(lambda name: prefix+name).sample(False,sample_rate,None).map(lambda file: with_lhs_time(file,desiredT,all_hyperplanes)).map(lambda (filename, res): swap_and_simplify(filename,res))
+result.map(lambda (res,filename): str(res)+","+filename).saveAsTextFile(out_destination)
 
 def candidate_neighbors(input_file):
 	_, hash_point=with_lhs_time(input_file,desiredT,all_hyperplanes)
 	hash_point,_ = swap_and_simplify(None,hash_point)
-	return result.filter(lambda (res,filename): res==hash_point).map(lambda (res,filename): filename).collect()
-
-all_candidate_nbhrs=[]
-for i in range(times_hashed):
-	make_hypers_and_hash(y)
-	all_candidate_nbhrs=all_candidate_nbhrs+candidate_neighbors("wavFiles/aerosol-can-spray-01.wav")
+	return result.filter(lambda (res,filename): res==hash_point).collect()
