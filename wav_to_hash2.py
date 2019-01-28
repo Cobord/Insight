@@ -27,6 +27,10 @@ def periodize(signal,len_needed):
 	return signal_expanded
 
 # read from filename, make desired length
+# exceptions are returned with length 26 because
+# in the next step they can be filtered away for being too short
+# that removes the fileames that didn't give a wav file that could
+# be opened
 def almost_raw(filename):
 	len_needed=interval_time*samp_freq
 	raw_data=np.zeros(len_needed)
@@ -43,7 +47,7 @@ def almost_raw(filename):
 def downsampling(raw_data):
 	return decimate(raw_data,down_factor)
 
-# from filename return (filename,spectrum)
+# from the downsampled periodized data give spectrum
 # spectrum is given as all the real parts followed by all the imaginary parts
 def to_spectrum(modified_data):
 	fourier=fft(modified_data)
@@ -52,7 +56,9 @@ def to_spectrum(modified_data):
 	fourier=fourier*[2**(-i*i/(length*length)) for i in range(length)]
 	return np.append(np.real(fourier),np.imag(fourier))
 
-def to_lhs(spectra,all_hyperplanes,num_hp_per_arr):
+# from a spectral data, the eqs defining hyperplanes
+# this returns LSH 
+def to_lsh(spectra,all_hyperplanes,num_hp_per_arr):
 	return hash_point(spectra,all_hyperplanes,num_hp_per_arr)
 
 def hash_point(point,all_hyperplanes,num_hp_per_arr):
@@ -81,8 +87,13 @@ def construct_hyperplanes(num_hp_arrangements,num_hp_per_arrangement,ambient_dim
 	return np.matrix(all_hp_rdd.collect())
 
 input_files_prefix="wavFiles/"
-input_file_list="wavFilesList2.txt"
+input_file_list="wavFilesList3.txt"
 output_files_dest="hdfs://ec2-52-0-185-8.compute-1.amazonaws.com:9000/user/output"
+
+file_list=glob.glob(input_files_prefix+"*.wav")
+with open(input_file_list,"w") as output:
+	for item in file_list:
+		output.write("%s\n"%item)
 
 result=(sc.textFile(input_file_list)
 	.map(lambda name:input_files_prefix+name)
@@ -97,7 +108,7 @@ num_hp_arrangements=5
 ambient_dimension=interval_time*samp_freq/down_factor
 all_hyperplanes=construct_hyperplanes(num_hp_arrangements,num_hp_per_arrangement,ambient_dimension)
 
-result=result.map(lambda (file,res): (file,to_lhs(res,all_hyperplanes,num_hp_per_arrangement)))
+result=result.map(lambda (file,res): (file,to_lsh(res,all_hyperplanes,num_hp_per_arrangement)))
 result.persist()
 string_result=result.map(lambda (filename,res): str(res)+","+filename)
 string_result.saveAsTextFile(output_files_dest)
@@ -117,8 +128,8 @@ def candidate_neighbors(unknown_file):
 		my_spectrum=to_spectrum(downsampling(almost_raw(input_files_prefix+unknown_file)))
 	except:
 		return ([],0)
-	my_lhs=to_lhs(my_spectrum,all_hyperplanes,num_hp_per_arrangement)
-	return (result.filter(lambda (file,res): any_matches(res,my_lhs)).collect(),my_spectrum)
+	my_lsh=to_lsh(my_spectrum,all_hyperplanes,num_hp_per_arrangement)
+	return (result.filter(lambda (file,res): any_matches(res,my_lsh)).collect(),my_spectrum)
 
 def score_false_positives(candidates,my_spectrum):
 	scored_candidates={}
@@ -136,9 +147,11 @@ def score_false_positives(candidates,my_spectrum):
 
 def best_neighbors(unknown_file):
 	(candidates,my_spectrum)=candidate_neighbors(unknown_file)
-	return score_false_positives(candidates,my_spectrum)
+	scored_candidates=score_false_positives(candidates,my_spectrum)
+	for key,value in sorted(scored_candidates.iteritems(), key = lambda (k,v): v[1]):
+		print("%s : %s" % (key,value))
 
 print("Candidate Neighbors of aerosol can")
-print(candidate_neighbors("aerosol-can-spray-01.wav"))
+#print(candidate_neighbors("aerosol-can-spray-01.wav"))
 print(candidate_neighbors("arosol-can-spray-022.wav"))
 print(best_neighbors("aerosol-can-spray-01.wav"))
