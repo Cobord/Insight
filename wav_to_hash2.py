@@ -12,7 +12,11 @@ conf = (SparkConf()
         .setMaster("local")
         .setAppName("spectra")
         .set("spark.executor.memory","1g"))
-sc = SparkContext(conf=conf) 
+sc = SparkContext(conf=conf)
+
+interval_time=30
+samp_freq=44100
+down_factor=5
 
 # extends periodically so it is the right length len_needed
 def periodize(signal,len_needed):
@@ -24,7 +28,7 @@ def periodize(signal,len_needed):
 
 # read from filename, make desired length
 def almost_raw(filename):
-	len_needed=30*44100
+	len_needed=interval_time*samp_freq
 	raw_data=np.zeros(len_needed)
 	try:
 		freqs, raw_data=wavfile.read(filename)
@@ -37,8 +41,7 @@ def almost_raw(filename):
 
 # downsampling step
 def downsampling(raw_data):
-	downsample_factor=5
-	return decimate(raw_data,downsample_factor)
+	return decimate(raw_data,down_factor)
 
 # from filename return (filename,spectrum)
 # spectrum is given as all the real parts followed by all the imaginary parts
@@ -90,8 +93,8 @@ result=(sc.textFile(input_file_list)
 	)
 num_points=result.count()
 num_hp_per_arrangement=int(np.log2(num_points))
-num_hp_arrangements=3
-ambient_dimension=30*44100/5
+num_hp_arrangements=5
+ambient_dimension=interval_time*samp_freq/down_factor
 all_hyperplanes=construct_hyperplanes(num_hp_arrangements,num_hp_per_arrangement,ambient_dimension)
 
 result=result.map(lambda (file,res): (file,to_lhs(res,all_hyperplanes,num_hp_per_arrangement)))
