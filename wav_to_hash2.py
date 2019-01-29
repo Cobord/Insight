@@ -64,6 +64,10 @@ def to_spectrum(modified_data):
 def to_lsh(spectra,all_hyperplanes_mat,num_hp_per_arr):
 	return hash_point(spectra,all_hyperplanes_mat,num_hp_per_arr)
 
+# given a point and all the hyperlanes compute the list of booleans for
+# on + or - sideof each. That is unsimplified
+# then break it up into num_hp_per_arr chunks and encode each of those
+# as a single integer by binary
 def hash_point(point,all_hyperplanes_mat,num_hp_per_arr):
 	needed_length=all_hyperplanes_mat.shape[1]
 	cur_length=point.shape[0]
@@ -76,17 +80,28 @@ def hash_point(point,all_hyperplanes_mat,num_hp_per_arr):
 	unsimplified=list(map(lambda x: int(x>=0), pre_hashed))
 	return simplify_hash_point(unsimplified,num_hp_per_arr)
 
+# the chunking step above
 def simplify_hash_point(int_list,num_hp_per_arrangement):
 	chunked_list=[int_list[i:i+num_hp_per_arrangement] for i in range(0,len(int_list),num_hp_per_arrangement)]
 	return list(map(int_list_to_num,chunked_list))
 
+# the binary step above
 def int_list_to_num(int_list):
 	return np.array([int_list[i]<<i for i in range(len(int_list))]).sum()
 
+# a random num_hps by ambient_dimension matrix
 def construct_hyperplanes(num_hp_arrangements,num_hp_per_arrangement,ambient_dimension):
 	num_hps=num_hp_arrangements*num_hp_per_arrangement
 	all_hp_rdd = RandomRDDs.normalVectorRDD(sc,num_hps,ambient_dimension)
 	return np.matrix(all_hp_rdd.collect())
+
+# format with ; for parsing ease, split on ;
+def format_known_strings(filename,hashes):
+	hashes_string=""
+	for hash in hashes:
+		hashes_string+=str(hash)
+		hashes_string+=";"
+	return hashes_string+filename
 
 input_files_prefix="wavFiles/"
 input_file_list="wavFilesList2.txt"
@@ -122,14 +137,15 @@ num_hp_arrangements=5
 ambient_dimension=interval_time*samp_freq/down_factor
 all_hyperplanes_mat=construct_hyperplanes(
         num_hp_arrangements,num_hp_per_arrangement,ambient_dimension)
-#all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
+all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
 
 result=result.map(lambda (file,res): 
-        (file,to_lsh(res,all_hyperplanes_mat,num_hp_per_arrangement)))
+        (file,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
 
 result.persist()
-string_result=result.map(lambda (filename,res): str(res)+","+filename)
-string_result.collect()
+string_result=result.map(lambda (filename,res): format_known_strings(filename,res))
+known_files_lib=string_result.collect()
+print(known_files_lib)
 #string_result.saveAsTextFile(output_files_dest)
 
 def any_matches(lhs1,lhs2):
@@ -142,6 +158,10 @@ def all_match(lhs,rhs):
 	length=min(len(lhs),len(rhs))
 	return all([lhs[i]==rhs[i] for i in range(length)])
 
+# for temporary purposes without using results saved into ElasticSearch
+# normally this function should not have access to the RDD result
+# needs to evaluate spectrum of unknown_file anyway so return that computation
+# don't waste the FFT expense
 def candidate_neighbors(unknown_file,all_hyperplanes_mat):
 	try:
 		my_spectrum=to_spectrum(downsampling(almost_raw(input_files_prefix+unknown_file)))
@@ -151,6 +171,11 @@ def candidate_neighbors(unknown_file,all_hyperplanes_mat):
 	return (result.filter(lambda (file,res): any_matches(res,my_lsh))
 		.collect(),my_spectrum)
 
+# list of filenames and their hashes that are candidate neighbors
+# compute the spectum of each and compute cos^2 with my_spectrum
+# closer to 1 is more of a match
+# returns a dictionary whose keys are filenames of potential neighbors
+# the value is a pair of the hash of the candidate and the cos^2
 def score_false_positives(candidates,my_spectrum):
 	scored_candidates={}
 	for (cand,lhs) in candidates:
@@ -165,6 +190,7 @@ def score_false_positives(candidates,my_spectrum):
 		scored_candidates[cand]=(lhs,cos_squared)
 	return scored_candidates
 
+# get the andidates and evaluate them using the two previous functions
 def best_neighbors(unknown_file,all_hyperplanes_mat):
 	(candidates,my_spectrum)=candidate_neighbors(unknown_file,all_hyperplanes_mat)
 	scored_candidates=score_false_positives(candidates,my_spectrum)
@@ -173,7 +199,7 @@ def best_neighbors(unknown_file,all_hyperplanes_mat):
 	#	print("%s : %s" % (key,value))
 	return scored_candidates
 
-print("Candidate Neighbors of aerosol can")
-print(candidate_neighbors("arosol-can-spray-022.wav",all_hyperplanes_mat))
-print(candidate_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_mat))
-print(best_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_mat))
+#print("Candidate Neighbors of aerosol can")
+#print(candidate_neighbors("arosol-can-spray-022.wav",all_hyperplanes_mat))
+#print(candidate_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_mat))
+#print(best_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_mat))
