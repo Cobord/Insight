@@ -140,10 +140,10 @@ all_hyperplanes_mat=construct_hyperplanes(
 all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
 
 result=result.map(lambda (file,res): 
-        (file,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
+        (file,res,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
 
 result.persist()
-string_result=result.map(lambda (filename,res): format_known_strings(filename,res))
+string_result=result.map(lambda (filename,spec,res): format_known_strings(filename,res))
 known_files_lib=string_result.collect()
 print(known_files_lib)
 #string_result.saveAsTextFile(output_files_dest)
@@ -168,7 +168,7 @@ def candidate_neighbors(unknown_file,all_hyperplanes_mat):
 	except:
 		return ([],0)
 	my_lsh=to_lsh(my_spectrum,all_hyperplanes_mat,num_hp_per_arrangement)
-	return (result.filter(lambda (file,res): any_matches(res,my_lsh))
+	return (result.filter(lambda (file,spec,res): any_matches(res,my_lsh))
 		.collect(),my_spectrum)
 
 # list of filenames and their hashes that are candidate neighbors
@@ -178,8 +178,8 @@ def candidate_neighbors(unknown_file,all_hyperplanes_mat):
 # the value is a pair of the hash of the candidate and the cos^2
 def score_false_positives(candidates,my_spectrum):
 	scored_candidates={}
-	for (cand,lhs) in candidates:
-		their_spectrum=to_spectrum(downsampling(almost_raw(cand)))
+	for (cand,their_spectrum,lhs) in candidates:
+		#their_spectrum=to_spectrum(downsampling(almost_raw(cand)))
 		if all_match(my_spectrum,their_spectrum):
 			cos_squared=1
 		else:
@@ -199,7 +199,7 @@ def best_neighbors(unknown_file,all_hyperplanes_mat):
 	#	print("%s : %s" % (key,value))
 	return scored_candidates
 
-#print("Candidate Neighbors of aerosol can")
-#print(candidate_neighbors("arosol-can-spray-022.wav",all_hyperplanes_mat))
-#print(candidate_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_mat))
-#print(best_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_mat))
+print("Candidate Neighbors of aerosol can")
+print(candidate_neighbors("arosol-can-spray-022.wav",all_hyperplanes_mat))
+print(candidate_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_mat))
+print(best_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_mat))
