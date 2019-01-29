@@ -15,8 +15,11 @@ conf = (SparkConf()
 sc = SparkContext(conf=conf)
 
 interval_time=30
+#interval_time_BC=sc.broadcast(interval_time)
 samp_freq=44100
+#samp_freq_BC=sc.broadcast(samp_freq)
 down_factor=5
+#down_factor_BC=sc.broadcast(down_factor)
 
 # extends periodically so it is the right length len_needed
 def periodize(signal,len_needed):
@@ -58,21 +61,20 @@ def to_spectrum(modified_data):
 
 # from a spectral data, the eqs defining hyperplanes
 # this returns LSH 
-def to_lsh(spectra,all_hyperplanes,num_hp_per_arr):
-	return hash_point(spectra,all_hyperplanes,num_hp_per_arr)
+def to_lsh(spectra,all_hyperplanes_mat,num_hp_per_arr):
+	return hash_point(spectra,all_hyperplanes_mat,num_hp_per_arr)
 
-def hash_point(point,all_hyperplanes,num_hp_per_arr):
-	needed_length=all_hyperplanes.shape[1]
+def hash_point(point,all_hyperplanes_mat,num_hp_per_arr):
+	needed_length=all_hyperplanes_mat.shape[1]
 	cur_length=point.shape[0]
 	if (cur_length>needed_length):
 		point=point[:needed_length]
 	else:
-		all_hyperplanes=all_hyperplanes[:][:cur_length]
-	pre_hashed=np.dot(all_hyperplanes,point)
+		all_hyperplanes_mat=all_hyperplanes_mat[:][:cur_length]
+	pre_hashed=np.dot(all_hyperplanes_mat,point)
 	pre_hashed=pre_hashed.flatten().T
 	unsimplified=list(map(lambda x: int(x>=0), pre_hashed))
 	return simplify_hash_point(unsimplified,num_hp_per_arr)
-	#return pre_hashed.shape
 
 def simplify_hash_point(int_list,num_hp_per_arrangement):
 	chunked_list=[int_list[i:i+num_hp_per_arrangement] for i in range(0,len(int_list),num_hp_per_arrangement)]
@@ -87,13 +89,22 @@ def construct_hyperplanes(num_hp_arrangements,num_hp_per_arrangement,ambient_dim
 	return np.matrix(all_hp_rdd.collect())
 
 input_files_prefix="wavFiles/"
-input_file_list="wavFilesList3.txt"
+input_file_list="wavFilesList2.txt"
 output_files_dest="hdfs://ec2-52-0-185-8.compute-1.amazonaws.com:9000/user/output"
 
-file_list=glob.glob(input_files_prefix+"*.wav")
-with open(input_file_list,"w") as output:
-	for item in file_list:
-		output.write("%s\n"%item)
+#num_points=0
+#file_list=glob.glob(input_files_prefix+"*.wav")
+#with open(input_file_list,"w") as output:
+#	for item in file_list:
+#		output.write("%s\n"%item)
+#		num_points=num_points+1
+
+#num_hp_per_arrangement=int(np.log2(num_points))
+#num_hp_arrangements=5
+#ambient_dimension=interval_time*samp_freq/down_factor
+#all_hyperplanes_mat=construct_hyperplanes(
+#	num_hp_arrangements,num_hp_per_arrangement,ambient_dimension)
+#all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
 
 result=(sc.textFile(input_file_list)
 	.map(lambda name:input_files_prefix+name)
@@ -102,16 +113,24 @@ result=(sc.textFile(input_file_list)
 	.map(lambda (file,res): (file,downsampling(res)) )
 	.map(lambda (file,res): (file,to_spectrum(res)) )
 	)
+#result.persist()
+
 num_points=result.count()
+#print("Num Points: %i"%num_points)
 num_hp_per_arrangement=int(np.log2(num_points))
 num_hp_arrangements=5
 ambient_dimension=interval_time*samp_freq/down_factor
-all_hyperplanes=construct_hyperplanes(num_hp_arrangements,num_hp_per_arrangement,ambient_dimension)
+all_hyperplanes_mat=construct_hyperplanes(
+        num_hp_arrangements,num_hp_per_arrangement,ambient_dimension)
+#all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
 
-result=result.map(lambda (file,res): (file,to_lsh(res,all_hyperplanes,num_hp_per_arrangement)))
+result=result.map(lambda (file,res): 
+        (file,to_lsh(res,all_hyperplanes_mat,num_hp_per_arrangement)))
+
 result.persist()
 string_result=result.map(lambda (filename,res): str(res)+","+filename)
-string_result.saveAsTextFile(output_files_dest)
+string_result.collect()
+#string_result.saveAsTextFile(output_files_dest)
 
 def any_matches(lhs1,lhs2):
 	length=min(len(lhs1),len(lhs2))
@@ -123,13 +142,14 @@ def all_match(lhs,rhs):
 	length=min(len(lhs),len(rhs))
 	return all([lhs[i]==rhs[i] for i in range(length)])
 
-def candidate_neighbors(unknown_file):
+def candidate_neighbors(unknown_file,all_hyperplanes_mat):
 	try:
 		my_spectrum=to_spectrum(downsampling(almost_raw(input_files_prefix+unknown_file)))
 	except:
 		return ([],0)
-	my_lsh=to_lsh(my_spectrum,all_hyperplanes,num_hp_per_arrangement)
-	return (result.filter(lambda (file,res): any_matches(res,my_lsh)).collect(),my_spectrum)
+	my_lsh=to_lsh(my_spectrum,all_hyperplanes_mat,num_hp_per_arrangement)
+	return (result.filter(lambda (file,res): any_matches(res,my_lsh))
+		.collect(),my_spectrum)
 
 def score_false_positives(candidates,my_spectrum):
 	scored_candidates={}
@@ -145,13 +165,15 @@ def score_false_positives(candidates,my_spectrum):
 		scored_candidates[cand]=(lhs,cos_squared)
 	return scored_candidates
 
-def best_neighbors(unknown_file):
-	(candidates,my_spectrum)=candidate_neighbors(unknown_file)
+def best_neighbors(unknown_file,all_hyperplanes_mat):
+	(candidates,my_spectrum)=candidate_neighbors(unknown_file,all_hyperplanes_mat)
 	scored_candidates=score_false_positives(candidates,my_spectrum)
-	for key,value in sorted(scored_candidates.iteritems(), key = lambda (k,v): v[1]):
-		print("%s : %s" % (key,value))
+	#print(scored_candidates)
+	#for key,value in sorted(scored_candidates.iteritems(), key = lambda (k,v): v[1]):
+	#	print("%s : %s" % (key,value))
+	return scored_candidates
 
 print("Candidate Neighbors of aerosol can")
-#print(candidate_neighbors("aerosol-can-spray-01.wav"))
-print(candidate_neighbors("arosol-can-spray-022.wav"))
-print(best_neighbors("aerosol-can-spray-01.wav"))
+print(candidate_neighbors("arosol-can-spray-022.wav",all_hyperplanes_mat))
+print(candidate_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_mat))
+print(best_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_mat))
