@@ -171,6 +171,17 @@ def candidate_neighbors(unknown_file,all_hyperplanes_mat):
 	return (result.filter(lambda (file,spec,res): any_matches(res,my_lsh))
 		.collect(),my_spectrum)
 
+def compare_spectra(my_spectrum,their_spectrum):
+        if all_match(my_spectrum,their_spectrum):
+		cos_squared=1
+	else:
+		try:
+			cos_squared=np.dot(my_spectrum,their_spectrum)**2/(np.dot(my_spectrum,my_spectrum)*np.dot(their_spectrum,their_spectrum))
+
+		except:
+			cos_squared=0
+	return cos_squared
+
 # list of filenames and their hashes that are candidate neighbors
 # compute the spectum of each and compute cos^2 with my_spectrum
 # closer to 1 is more of a match
@@ -180,9 +191,9 @@ def score_false_positives(candidates,my_spectrum):
 	scored_candidates={}
 	for (cand,their_spectrum,lhs) in candidates:
 		#their_spectrum=to_spectrum(downsampling(almost_raw(cand)))
-		if all_match(my_spectrum,their_spectrum):
-			cos_squared=1
-		else:
+                if all_match(my_spectrum,their_spectrum):          
+                        cos_squared=1
+                else:
 			try:
 				cos_squared=np.dot(my_spectrum,their_spectrum)**2/(np.dot(my_spectrum,my_spectrum)*np.dot(their_spectrum,their_spectrum))
 			except:
@@ -198,6 +209,11 @@ def best_neighbors(unknown_file,all_hyperplanes_mat):
 	#for key,value in sorted(scored_candidates.iteritems(), key = lambda (k,v): v[1]):
 	#	print("%s : %s" % (key,value))
 	return scored_candidates
+
+def best_neighbors_slow(unknown_file,all_hyperplanes_mat):
+	(_,my_spectrum)=candidate_neighbors(unknown_file,all_hyperplanes_mat)
+	result=result.map(lambda (filename,their_spec,hash): (compare_spectra(my_spectrum,their_spectrum),filename))
+	print(result.takeOrdering(10))
 
 print("Candidate Neighbors of aerosol can")
 print(candidate_neighbors("arosol-can-spray-022.wav",all_hyperplanes_mat))
