@@ -196,7 +196,7 @@ def score_false_positives(candidates,my_spectrum):
 	scored_candidates={}
 	for (cand,their_spectrum,lhs) in candidates:
 		#their_spectrum=to_spectrum(downsampling(almost_raw(cand)))
-                if all_match(my_spectrum,their_spectrum):          
+                if all_match(my_spectrum,their_spectrum):
                         cos_squared=1
                 else:
 			try:
@@ -217,10 +217,12 @@ def best_neighbors(unknown_file,all_hyperplanes_mat):
 
 def best_neighbors_slow(unknown_file,all_hyperplanes_mat):
 	(_,my_spectrum)=candidate_neighbors(unknown_file,all_hyperplanes_mat)
-	result=result.map(lambda (filename,their_spec,hash): (compare_spectra(my_spectrum,their_spectrum),filename))
-	print(result.takeOrdering(10))
+	result_slow=result.map(lambda (filename,their_spec,hash): (-compare_spectra(my_spectrum,their_spec),filename))
+	print(result_slow.takeOrdered(10))
+	return
 
 print("Candidate Neighbors of aerosol can")
-print(candidate_neighbors("arosol-can-spray-022.wav",all_hyperplanes_mat))
-print(candidate_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_mat))
-print(best_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_mat))
+print(candidate_neighbors("arosol-can-spray-022.wav",all_hyperplanes_BC.value))
+print(candidate_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_BC.value))
+print(best_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_BC.value))
+best_neighbors_slow("aerosol-can-spray-01.wav",all_hyperplanes_BC.value)
