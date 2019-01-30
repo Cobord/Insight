@@ -56,8 +56,13 @@ def to_spectrum(modified_data):
 	fourier=fft(modified_data)
 	length=int(len(fourier)/2)
 	fourier=fourier[:length]
+	if (fourier[0]>0):
+		phase=math.e**(1j*np.angle(fourier[0]))
+		fourier=fourier/phase
 	fourier=fourier*[2**(-i*i/(length*length)) for i in range(length)]
-	return np.append(np.real(fourier),np.imag(fourier))
+	to_return=np.append(np.real(fourier),np.imag(fourier))
+	#return to_return/math.sqrt((to_return**2).sum())
+	return to_return
 
 # from a spectral data, the eqs defining hyperplanes
 # this returns LSH 
