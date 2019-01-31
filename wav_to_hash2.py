@@ -1,5 +1,6 @@
 from scipy.fftpack import fft
 from scipy.signal import decimate
+from scipy.signal import stft
 from scipy.io import wavfile
 import math
 import numpy as np
@@ -53,13 +54,15 @@ def downsampling(raw_data):
 # from the downsampled periodized data give spectrum
 # spectrum is given as all the real parts followed by all the imaginary parts
 def to_spectrum(modified_data):
-	fourier=fft(modified_data)
-	length=int(len(fourier)/2)
-	fourier=fourier[:length]
-	if (fourier[0]>0):
-		phase=math.e**(1j*np.angle(fourier[0]))
-		fourier=fourier/phase
-	fourier=fourier*[2**(-i*i/(length*length)) for i in range(length)]
+	#fourier=fft(modified_data)
+	#length=int(len(fourier)/2)
+	#fourier=fourier[:length]
+	#if (fourier[0]>0):
+	#	phase=math.e**(1j*np.angle(fourier[0]))
+	#	fourier=fourier/phase
+	#fourier=fourier*[2**(-i*i/(length*length)) for i in range(length)]
+	num_per_sec=int(math.ceil(samp_freq/down_factor))
+	fourier=stft(modified_data,nperseg=num_per_sec)[2].flatten()
 	to_return=np.append(np.real(fourier),np.imag(fourier))
 	#return to_return/math.sqrt((to_return**2).sum())
 	return to_return
@@ -109,7 +112,7 @@ def format_known_strings(filename,hashes):
 	return hashes_string+filename
 
 input_files_prefix="wavFiles/"
-input_file_list="wavFilesList2.txt"
+input_file_list="wavFilesList4.txt"
 output_files_dest="hdfs://ec2-52-0-185-8.compute-1.amazonaws.com:9000/user/output"
 
 #num_points=0
@@ -139,7 +142,8 @@ num_points=result.count()
 #print("Num Points: %i"%num_points)
 num_hp_per_arrangement=int(np.log2(num_points))
 num_hp_arrangements=5
-ambient_dimension=interval_time*samp_freq/down_factor
+#ambient_dimension=interval_time*samp_freq/down_factor
+ambient_dimension=len(result.take(1)[0][1])
 all_hyperplanes_mat=construct_hyperplanes(
         num_hp_arrangements,num_hp_per_arrangement,ambient_dimension)
 all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
@@ -149,9 +153,10 @@ result=result.map(lambda (file,res):
 
 result.persist()
 string_result=result.map(lambda (filename,spec,res): format_known_strings(filename,res))
-known_files_lib=string_result.collect()
-print(known_files_lib)
+#known_files_lib=string_result.collect()
+#print(known_files_lib)
 #string_result.saveAsTextFile(output_files_dest)
+#quit()
 
 def any_matches(lhs1,lhs2):
 	length=min(len(lhs1),len(lhs2))
