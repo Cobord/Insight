@@ -18,6 +18,8 @@ my_bucket=s3.Bucket(my_bucket_name)
 all_filenames=[]
 for object in my_bucket.objects.all():
 	all_filenames.append((object.bucket_name,object.key))
+print(all_filenames[:10])
+quit()
 
 desired_file=all_filenames[0]
 s3.Object(desired_file[0],desired_file[1]).download_file('/tmp/{desired_file[1]}')
