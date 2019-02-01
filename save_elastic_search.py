@@ -1,5 +1,6 @@
 from pyspark import SparkContext, SparkConf
-#from pyspark.sql import SQLContext
+
+#from pyspark.sql import SQLContext,createDataFrame
 #from pyspark.sql.functions import lit
 
 import json
@@ -60,11 +61,12 @@ es_write_conf={}
 es_write_conf["es.nodes"]='localhost'
 es_write_conf["es.port"]='9200'
 es_write_conf["es.resource"]='es_data/testing'
-es_write_conf["es.input.json"]='true'
-es_write_conf["es.mapping.id"]="filename"
+#es_write_conf["es.input.json"]='true
+#es_write_conf["es.mapping.id"]="filename"
+#es_write_conf["es.mapping.id"]="extra_id"
 #es_write_conf["es.write.operation"]='upsert'
 
-#df.write.format("org.elasticsearch.spark.sql").options(**es_write_conf).mode("append").save("test_elastic_search")
+#df.write.format("org.elasticsearch.spark.sql").options(**es_write_conf).mode("append").save("es_data/test_elastic_search")
 
 rdd.saveAsNewAPIHadoopFile(
 	path='-',
