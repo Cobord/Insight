@@ -193,6 +193,17 @@ def lsh_of_unknown(unknown_file_full_path,all_hyperplanes_loc):
 	my_lsh=to_lsh(my_spectrum,all_hyperplanes_mat,num_hp_per_arrangement)
 	return my_lsh
 
+def lsh_and_spectra_of_unknown(unknown_file_full_path,all_hyperplanes_loc):
+	all_hyperplanes_mat=np.load(all_hyperplanes_loc)
+	num_hp_arrangements=get_num_hp_arrangements()
+	num_hp_per_arrangement=int(all_hyperplanes_mat.shape[0]/num_hp_arrangements)
+	try:
+		my_spectrum=to_spectrum(downsampling(almost_raw(unknown_file_full_path)))
+	except:
+		return None
+	my_lsh=to_lsh(my_spectrum,all_hyperplanes_mat,num_hp_per_arrangement)
+	return (my_lsh,my_spectrum)
+
 # for temporary purposes without using results saved into ElasticSearch
 # normally this function should not have access to the RDD result
 # needs to evaluate spectrum of unknown_file anyway so return that computation
@@ -236,6 +247,16 @@ def score_false_positives(candidates,my_spectrum):
 		scored_candidates[cand]=(lsh,cos_squared)
 	return scored_candidates
 
+def score_false_positives_2(candidates,my_spectrum):
+	result=(sc.parallelize(candidates).map(lambda cand:(cand,almost_raw(cand)))
+		.filter(lambda (cand,res): len(res)>27)
+		.map(lambda (cand,res): (cand,downsampling(res)) )
+		.map(lambda (cand,res): (cand,to_spectrum(res)) )
+		.map(lambda (cand,res): (cand,compare_spectra(res,my_spectrum)) )
+		)
+	return result.collect()
+
+
 # get the andidates and evaluate them using the two previous functions
 #def best_neighbors(unknown_file,all_hyperplanes_mat):
 #	(candidates,my_spectrum)=candidate_neighbors(unknown_file,all_hyperplanes_mat)
@@ -258,3 +279,4 @@ def score_false_positives(candidates,my_spectrum):
 #print(candidate_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_BC.value))
 #print(best_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_BC.value))
 #best_neighbors_slow("aerosol-can-spray-01.wav",all_hyperplanes_BC.value)
+
