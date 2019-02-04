@@ -1,0 +1,16 @@
+[2019-02-04 03:38:39,891][INFO ][node                     ] [Node 0] version[1.5.2], pid[30920], build[62ff986/2015-04-27T09:21:06Z]
+[2019-02-04 03:38:39,891][INFO ][node                     ] [Node 0] initializing ...
+[2019-02-04 03:38:39,906][INFO ][plugins                  ] [Node 0] loaded [cloud-aws], sites []
+[2019-02-04 03:38:43,291][INFO ][node                     ] [Node 0] initialized
+[2019-02-04 03:38:43,291][INFO ][node                     ] [Node 0] starting ...
+[2019-02-04 03:38:43,398][INFO ][transport                ] [Node 0] bound_address {inet[/0:0:0:0:0:0:0:0:9301]}, publish_address {inet[/10.0.0.9:9301]}
+[2019-02-04 03:38:43,410][INFO ][discovery                ] [Node 0] elasticsearch/x2NGJUDaQl6RtwKRbYzK-Q
+[2019-02-04 03:38:47,746][INFO ][cluster.service          ] [Node 0] detected_master [Node 0][zVbiJP6xQQeuIxFfL2ud-A][ip-10-0-0-9][inet[/10.0.0.9:9300]], added {[Node 0][zVbiJP6xQQeuIxFfL2ud-A][ip-10-0-0-9][inet[/10.0.0.9:9300]],}, reason: zen-disco-receive(from master [[Node 0][zVbiJP6xQQeuIxFfL2ud-A][ip-10-0-0-9][inet[/10.0.0.9:9300]]])
+[2019-02-04 03:38:47,788][INFO ][http                     ] [Node 0] bound_address {inet[/0:0:0:0:0:0:0:0:9201]}, publish_address {inet[/10.0.0.9:9201]}
+[2019-02-04 03:38:47,788][INFO ][node                     ] [Node 0] started
+[2019-02-04 04:49:30,275][INFO ][action.admin.cluster.node.shutdown] [Node 0] shutting down in [200ms]
+[2019-02-04 04:49:30,476][INFO ][action.admin.cluster.node.shutdown] [Node 0] initiating requested shutdown...
+[2019-02-04 04:49:30,476][INFO ][node                     ] [Node 0] stopping ...
+[2019-02-04 04:49:30,569][INFO ][node                     ] [Node 0] stopped
+[2019-02-04 04:49:30,570][INFO ][node                     ] [Node 0] closing ...
+[2019-02-04 04:49:30,574][INFO ][node                     ] [Node 0] closed

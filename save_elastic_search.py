@@ -43,6 +43,9 @@ def remove_id(doc):
 def format_json_exp(dict):
 	return (dict['filename'],json.dumps(dict))
 
+def format_data_example(dict):
+	return (dict['doc-id'],json.dumps(dict))
+
 conf = SparkConf().setAppName("update_sound_data")
 sc = SparkContext(conf=conf)
 #sc.setLogLevel("INFO")
@@ -51,18 +54,22 @@ sc = SparkContext(conf=conf)
 data1 = [('file1',[1,2,3,3,5],[0,1,0,0,0]),('file2',[1,0,-1,0,0],[0,0,0,0,0])]
 data2 = [('file3',[1,2,3,3,5],[0,1,0,0,0]),('file4',[1,0,-1,0,0],[0,0,0,0,0])]
 
-rdd = sc.parallelize(data1)
+data3 = [{'some-key': 'some-value', 'doc-id': 123},
+	{'some-key': 'some-value', 'doc-id': 456},
+	{'some-key': 'some-value', 'doc-id': 789}]
+
+rdd = sc.parallelize(data3).map(lambda x: format_data_example(x))
 
 #df=createDataFrame(rdd.map(addID))
 #rdd=rdd.map(parse).map(remove_id).map(json.dumps).map(lambda x: ('key',x))
-rdd=rdd.map(parse).map(format_json_exp)
+#rdd=rdd.map(parse).map(format_json_exp)
 
 es_write_conf={}
 es_write_conf["es.nodes"]='localhost'
 es_write_conf["es.port"]='9200'
 es_write_conf["es.resource"]='es_data/testing'
-#es_write_conf["es.input.json"]='true
-#es_write_conf["es.mapping.id"]="filename"
+es_write_conf["es.input.json"]="yes"
+es_write_conf["es.mapping.id"]="doc-id"
 #es_write_conf["es.mapping.id"]="extra_id"
 #es_write_conf["es.write.operation"]='upsert'
 

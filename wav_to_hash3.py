@@ -15,12 +15,17 @@ conf = (SparkConf()
         .set("spark.executor.memory","1g"))
 sc = SparkContext(conf=conf)
 
-interval_time=30
-#interval_time_BC=sc.broadcast(interval_time)
-samp_freq=44100
-#samp_freq_BC=sc.broadcast(samp_freq)
-down_factor=5
-#down_factor_BC=sc.broadcast(down_factor)
+def get_interval_time():
+	return 30
+
+def get_samp_freq():
+	return 44100
+
+def get_down_factor():
+	return 5
+
+def get_num_hp_arrangements():
+	return 5
 
 # extends periodically so it is the right length len_needed
 def periodize(signal,len_needed):
@@ -36,6 +41,8 @@ def periodize(signal,len_needed):
 # that removes the fileames that didn't give a wav file that could
 # be opened
 def almost_raw(filename):
+	interval_time=get_interval_time()
+	samp_freq=get_samp_freq()
 	len_needed=interval_time*samp_freq
 	raw_data=np.zeros(len_needed)
 	try:
@@ -49,6 +56,7 @@ def almost_raw(filename):
 
 # downsampling step
 def downsampling(raw_data):
+	down_factor=get_down_factor()
 	return decimate(raw_data,down_factor)
 
 # from the downsampled periodized data give spectrum
@@ -61,14 +69,16 @@ def to_spectrum(modified_data):
 	#	phase=math.e**(1j*np.angle(fourier[0]))
 	#	fourier=fourier/phase
 	#fourier=fourier*[2**(-i*i/(length*length)) for i in range(length)]
+	samp_freq=get_samp_freq()
+	down_factor=get_down_factor()
 	num_per_sec=int(math.ceil(samp_freq/down_factor))
-	fourier=stft(modified_data,nperseg=num_per_sec)[2].flatten()
-	to_return=np.append(np.real(fourier),np.imag(fourier))
+	fourier=stft(modified_data,nperseg=num_per_sec*5,noverlap=num_per_sec,return_onesided=True,padded=False)[2].flatten()
+	fourier=np.append(np.real(fourier),np.imag(fourier))
 	#return to_return/math.sqrt((to_return**2).sum())
-	return to_return
+	return fourier
 
 # from a spectral data, the eqs defining hyperplanes
-# this returns LSH 
+# this returns LSH
 def to_lsh(spectra,all_hyperplanes_mat,num_hp_per_arr):
 	return hash_point(spectra,all_hyperplanes_mat,num_hp_per_arr)
 
@@ -103,6 +113,27 @@ def construct_hyperplanes(num_hp_arrangements,num_hp_per_arrangement,ambient_dim
 	all_hp_rdd = RandomRDDs.normalVectorRDD(sc,num_hps,ambient_dimension)
 	return np.matrix(all_hp_rdd.collect())
 
+def find_hyperplane_dims(input_files_prefix):
+	num_points=0
+	found_dim=-1
+	file_list=glob.glob(input_files_prefix+"*.wav")
+	for file in file_list:
+		if found_dim<0:
+			x=almost_raw(file)
+			if (len(x)>27):
+				found_dim=len(to_spectrum(downsampling(x)))
+		num_points=num_points+1
+	num_hp_per_arrangement=int(np.log2(num_points))
+	num_hp_arrangements=get_num_hp_arrangements()
+	return (num_hp_arrangements,num_hp_per_arrangement,found_dim)
+
+def construct_hyperplanes_2(input_file_prefix,save_location):
+	(arg1,arg2,arg3)=find_hyperplane_dims(input_file_prefix)
+	all_hps=construct_hyperplanes(arg1,arg2,arg3)
+	if (not save_location is None):
+		np.save(save_location,all_hps)
+	return (all_hps,arg2)
+
 # format with ; for parsing ease, split on ;
 def format_known_strings(filename,hashes):
 	hashes_string=""
@@ -111,52 +142,35 @@ def format_known_strings(filename,hashes):
 		hashes_string+=";"
 	return hashes_string+filename
 
-input_files_prefix="wavFiles/"
-input_file_list="wavFilesList4.txt"
-output_files_dest="hdfs://ec2-52-0-185-8.compute-1.amazonaws.com:9000/user/output"
+def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.txt",output_files_dest="hdfs://ec2-52-0-185-8.compute-1.amazonaws.com:9000/user/output",output_hps="all_hp"):
+	(all_hyperplanes_mat,num_hp_per_arrangement)=construct_hyperplanes_2(input_files_prefix,output_hps)
+	all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
+	subdivisions=[1,1,1,1,1]
+	file_list=glob.glob(input_files_prefix+"*.wav")
+	#result_divided=sc.textFile(input_file_list).randomSplit(subdivisions)
+	result_divided=sc.parallelize(file_list).randomSplit(subdivisions)
+	count=0
+	for result in result_divided:
+		#result=result.map(lambda name:input_files_prefix+name)
+		result=(result.map(lambda file: (file,almost_raw(file)))
+			.filter(lambda (file,res): len(res)>27)
+			.map(lambda (file,res): (file,downsampling(res)) )
+			.map(lambda (file,res): (file,to_spectrum(res)) )
+			)
+		result=result.map(lambda (file,res):
+        		(file,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
+		# saving the spectra leads to out of memory if spectrogram vs just FFT
+		#result=result.map(lambda (file,res):
+		#	(file,res,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
+		#result=result.map(lambda (filename,spec,res): format_known_strings(filename,res))
+		result=result.map(lambda (filename,res): format_known_strings(filename,res))
+		# call the ElasticSearch functionality here
+		result.saveAsTextFile(output_files_dest+("%i"%count))
+		count=count+1
 
-#num_points=0
-#file_list=glob.glob(input_files_prefix+"*.wav")
-#with open(input_file_list,"w") as output:
-#	for item in file_list:
-#		output.write("%s\n"%item)
-#		num_points=num_points+1
-
-#num_hp_per_arrangement=int(np.log2(num_points))
-#num_hp_arrangements=5
-#ambient_dimension=interval_time*samp_freq/down_factor
-#all_hyperplanes_mat=construct_hyperplanes(
-#	num_hp_arrangements,num_hp_per_arrangement,ambient_dimension)
-#all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
-
-result=(sc.textFile(input_file_list)
-	.map(lambda name:input_files_prefix+name)
-	.map(lambda file: (file,almost_raw(file)))
-	.filter(lambda (file,res): len(res)>27)
-	.map(lambda (file,res): (file,downsampling(res)) )
-	.map(lambda (file,res): (file,to_spectrum(res)) )
-	)
-#result.persist()
-
-num_points=result.count()
-#print("Num Points: %i"%num_points)
-num_hp_per_arrangement=int(np.log2(num_points))
-num_hp_arrangements=5
-#ambient_dimension=interval_time*samp_freq/down_factor
-ambient_dimension=len(result.take(1)[0][1])
-all_hyperplanes_mat=construct_hyperplanes(
-        num_hp_arrangements,num_hp_per_arrangement,ambient_dimension)
-all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
-
-result=result.map(lambda (file,res): 
-        (file,res,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
-
-result.persist()
-string_result=result.map(lambda (filename,spec,res): format_known_strings(filename,res))
-#known_files_lib=string_result.collect()
-#print(known_files_lib)
-#string_result.saveAsTextFile(output_files_dest)
-#quit()
+if __name__ == "__main__":
+	create_library()
+	quit()
 
 def any_matches(lhs1,lhs2):
 	length=min(len(lhs1),len(lhs2))
@@ -168,18 +182,29 @@ def all_match(lhs,rhs):
 	length=min(len(lhs),len(rhs))
 	return all([lhs[i]==rhs[i] for i in range(length)])
 
+def lsh_of_unknown(unknown_file_full_path,all_hyperplanes_loc):
+	all_hyperplanes_mat=np.load(all_hyperplanes_loc)
+	num_hp_arrangements=get_num_hp_arrangements()
+	num_hp_per_arrangement=int(all_hyperplanes_mat.shape[0]/num_hp_arrangements)
+	try:
+		my_spectrum=to_spectrum(downsampling(almost_raw(unknown_file_full_path)))
+	except:
+		return None
+	my_lsh=to_lsh(my_spectrum,all_hyperplanes_mat,num_hp_per_arrangement)
+	return my_lsh
+
 # for temporary purposes without using results saved into ElasticSearch
 # normally this function should not have access to the RDD result
 # needs to evaluate spectrum of unknown_file anyway so return that computation
 # don't waste the FFT expense
-def candidate_neighbors(unknown_file,all_hyperplanes_mat):
-	try:
-		my_spectrum=to_spectrum(downsampling(almost_raw(input_files_prefix+unknown_file)))
-	except:
-		return ([],0)
-	my_lsh=to_lsh(my_spectrum,all_hyperplanes_mat,num_hp_per_arrangement)
-	return (result.filter(lambda (file,spec,res): any_matches(res,my_lsh))
-		.collect(),my_spectrum)
+#def candidate_neighbors(unknown_file,all_hyperplanes_mat):
+#	try:
+#		my_spectrum=to_spectrum(downsampling(almost_raw(input_files_prefix+unknown_file)))
+#	except:
+#		return ([],0)
+#	my_lsh=to_lsh(my_spectrum,all_hyperplanes_mat,num_hp_per_arrangement)
+#	return (result.filter(lambda (file,spec,res): any_matches(res,my_lsh))
+#		.collect(),my_spectrum)
 
 def compare_spectra(my_spectrum,their_spectrum):
         if all_match(my_spectrum,their_spectrum):
@@ -187,7 +212,6 @@ def compare_spectra(my_spectrum,their_spectrum):
 	else:
 		try:
 			cos_squared=np.dot(my_spectrum,their_spectrum)**2/(np.dot(my_spectrum,my_spectrum)*np.dot(their_spectrum,their_spectrum))
-
 		except:
 			cos_squared=0
 	return cos_squared
@@ -197,10 +221,11 @@ def compare_spectra(my_spectrum,their_spectrum):
 # closer to 1 is more of a match
 # returns a dictionary whose keys are filenames of potential neighbors
 # the value is a pair of the hash of the candidate and the cos^2
+# small number of candidates so this is done sequentially not via cluster overhead
 def score_false_positives(candidates,my_spectrum):
 	scored_candidates={}
-	for (cand,their_spectrum,lhs) in candidates:
-		#their_spectrum=to_spectrum(downsampling(almost_raw(cand)))
+	for (cand,lsh) in candidates:
+		their_spectrum=to_spectrum(downsampling(almost_raw(cand)))
                 if all_match(my_spectrum,their_spectrum):
                         cos_squared=1
                 else:
@@ -208,26 +233,28 @@ def score_false_positives(candidates,my_spectrum):
 				cos_squared=np.dot(my_spectrum,their_spectrum)**2/(np.dot(my_spectrum,my_spectrum)*np.dot(their_spectrum,their_spectrum))
 			except:
 				cos_squared=0
-		scored_candidates[cand]=(lhs,cos_squared)
+		scored_candidates[cand]=(lsh,cos_squared)
 	return scored_candidates
 
 # get the andidates and evaluate them using the two previous functions
-def best_neighbors(unknown_file,all_hyperplanes_mat):
-	(candidates,my_spectrum)=candidate_neighbors(unknown_file,all_hyperplanes_mat)
-	scored_candidates=score_false_positives(candidates,my_spectrum)
-	#print(scored_candidates)
-	#for key,value in sorted(scored_candidates.iteritems(), key = lambda (k,v): v[1]):
-	#	print("%s : %s" % (key,value))
-	return scored_candidates
+#def best_neighbors(unknown_file,all_hyperplanes_mat):
+#	(candidates,my_spectrum)=candidate_neighbors(unknown_file,all_hyperplanes_mat)
+#	scored_candidates=score_false_positives(candidates,my_spectrum)
+#	#print(scored_candidates)
+#	#for key,value in sorted(scored_candidates.iteritems(), key = lambda (k,v): v[1]):
+#	#	print("%s : %s" % (key,value))
+#	return scored_candidates
 
-def best_neighbors_slow(unknown_file,all_hyperplanes_mat):
-	(_,my_spectrum)=candidate_neighbors(unknown_file,all_hyperplanes_mat)
-	result_slow=result.map(lambda (filename,their_spec,hash): (-compare_spectra(my_spectrum,their_spec),filename))
-	print(result_slow.takeOrdered(10))
-	return
+#def best_neighbors_slow(unknown_file,all_hyperplanes_mat,result):
+#	(_,my_spectrum)=candidate_neighbors(unknown_file,all_hyperplanes_mat)
+#	result_slow=result.map(lambda (filename,their_spec,hash): (-compare_spectra(my_spectrum,their_spec),filename))
+#	print(result_slow.takeOrdered(10))
+#	return
 
-print("Candidate Neighbors of aerosol can")
-print(candidate_neighbors("arosol-can-spray-022.wav",all_hyperplanes_BC.value))
-print(candidate_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_BC.value))
-print(best_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_BC.value))
-best_neighbors_slow("aerosol-can-spray-01.wav",all_hyperplanes_BC.value)
+# Move to another file so that this becomes the imported part and these
+# test cases are elsewhere
+#print("Candidate Neighbors of aerosol can")
+#print(candidate_neighbors("arosol-can-spray-022.wav",all_hyperplanes_BC.value))
+#print(candidate_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_BC.value))
+#print(best_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_BC.value))
+#best_neighbors_slow("aerosol-can-spray-01.wav",all_hyperplanes_BC.value)

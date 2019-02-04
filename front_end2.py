@@ -1,8 +1,9 @@
 import os
 from flask import Flask, flash, request, redirect, url_for
 from werkzeug.utils import secure_filename
+import wav_to_hash3
 
-UPLOAD_FOLDER='~/uploads/'
+UPLOAD_FOLDER='./uploads/'
 ALLOWED_EXTENSIONS=set(['wav','txt'])
 FUTURE_EXTENSIONS=set(['3gp','aa','wma','mp3','mp4','flac','aiff','au','ape','wv','m4a'])
 
@@ -46,9 +47,10 @@ def upload_file():
 			return redirect(request.url)
 		if file and allowed_file(file.filename):
 			filename = secure_filename(file.filename)
-			#file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-			file.save(filename)
-			return redirect(url_for('uploaded_file',filename=filename))
+			extension=filename.rsplit('.', 1)[1].lower()
+			save_loc=os.path.join(UPLOAD_FOLDER, 'temp.'+extension)
+			file.save(save_loc)
+			return redirect(url_for('uploadedFile',filename=filename))
 		return redirect(request.url)
 	return '''
 	<!doctype html>
@@ -60,11 +62,13 @@ def upload_file():
 	</form>
 	'''
 
-@app.route('/uploaded/<filename>')
-def uploaded_file(filename):
+@app.route('/uploadedFile/<filename>')
+def uploadedFile(filename):
+	extension=filename.rsplit('.',1)[1].lower()
+	save_loc=os.path.join(UPLOAD_FOLDER,'temp.'+extension)
+	my_hashes=wav_to_hash3.lsh_of_unknown(save_loc,'all_hp.npy')
 	return '''
 	<!doctype html>
 	<title>Uploaded File</title>
 	<h1>Just showing random from the library instead</h1>
-	</form>
 	'''
