@@ -57,5 +57,5 @@ def get_any_matches(hash1,hash2,hash3,hash4,hash5):
 
 	return set(result1+result2+result3+result4+result5)
 
-z=get_any_matches(103,58,29,12,21)
-print(z)
+#z=get_any_matches(103,58,29,12,21)
+#print(z)
