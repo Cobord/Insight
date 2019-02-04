@@ -113,6 +113,10 @@ def construct_hyperplanes(num_hp_arrangements,num_hp_per_arrangement,ambient_dim
 	all_hp_rdd = RandomRDDs.normalVectorRDD(sc,num_hps,ambient_dimension)
 	return np.matrix(all_hp_rdd.collect())
 
+# the spectrograms have adjustable parameters meaning their lengths are inconsistent across runs
+# so instead this computes the length by performing the operation on one file
+# and getting the needed length
+# also count the total number of input files in the library
 def find_hyperplane_dims(input_files_prefix):
 	num_points=0
 	found_dim=-1
@@ -142,6 +146,7 @@ def format_known_strings(filename,hashes):
 		hashes_string+=";"
 	return hashes_string+filename
 
+# makes the hyperplanes and compute the LSHs for all the files starting with the prefix
 def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.txt",output_files_dest="hdfs://ec2-52-0-185-8.compute-1.amazonaws.com:9000/user/output",output_hps="all_hp"):
 	(all_hyperplanes_mat,num_hp_per_arrangement)=construct_hyperplanes_2(input_files_prefix,output_hps)
 	all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
@@ -182,6 +187,8 @@ def all_match(lhs,rhs):
 	length=min(len(lhs),len(rhs))
 	return all([lhs[i]==rhs[i] for i in range(length)])
 
+
+# LSH of the unknown wav file
 def lsh_of_unknown(unknown_file_full_path,all_hyperplanes_loc):
 	all_hyperplanes_mat=np.load(all_hyperplanes_loc)
 	num_hp_arrangements=get_num_hp_arrangements()
@@ -193,6 +200,7 @@ def lsh_of_unknown(unknown_file_full_path,all_hyperplanes_loc):
 	my_lsh=to_lsh(my_spectrum,all_hyperplanes_mat,num_hp_per_arrangement)
 	return my_lsh
 
+# return the spectrum as well
 def lsh_and_spectra_of_unknown(unknown_file_full_path,all_hyperplanes_loc):
 	all_hyperplanes_mat=np.load(all_hyperplanes_loc)
 	num_hp_arrangements=get_num_hp_arrangements()
@@ -247,6 +255,9 @@ def score_false_positives(candidates,my_spectrum):
 		scored_candidates[cand]=(lsh,cos_squared)
 	return scored_candidates
 
+# version with spark, flask app is not run via spark-submit
+# so problem with importing this, it would give error upon sc
+# but if you do have spark context can use this one
 def score_false_positives_2(candidates,my_spectrum):
 	result=(sc.parallelize(candidates).map(lambda cand:(cand,almost_raw(cand)))
 		.filter(lambda (cand,res): len(res)>27)
