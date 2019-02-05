@@ -73,3 +73,6 @@ def uploadedFile(filename):
 	<title>Uploaded File</title>
 	<h1>Just showing random from the library instead</h1>
 	'''
+
+if __name__=="__main__":
+	app.run(debug=True,port=5000)
