@@ -1,7 +1,7 @@
 import os
 from flask import Flask, flash, request, redirect, url_for
 from werkzeug.utils import secure_filename
-import wav_to_hash3
+import wav_to_hash_flask
 import save_elastic_search2
 
 UPLOAD_FOLDER='./uploads/'
@@ -67,11 +67,12 @@ def upload_file():
 def uploadedFile(filename):
 	extension=filename.rsplit('.',1)[1].lower()
 	save_loc=os.path.join(UPLOAD_FOLDER,'temp.'+extension)
-	(my_hashes,my_spec)=wav_to_hash3.lsh_and_spectra_of_unknown(save_loc,'all_hp.npy')
-	potentials=save_elasticsearch2.get_any_matches(my_hashes[0],my_hashes[1],my_hashes[2],my_hashes[3],my_hashes[4])
-	scored_cands=wav_to_hash3.score_false_positives2(potentials,my_spec)
-	return str(stored_cands)
+	(my_hashes,my_spec)=wav_to_hash_flask.lsh_and_spectra_of_unknown(save_loc,'all_hp.npy')
+	#potentials=save_elasticsearch2.get_any_matches(my_hashes[0],my_hashes[1],my_hashes[2],my_hashes[3],my_hashes[4])
+	#scored_cands=wav_to_hash3.score_false_positives2(potentials,my_spec)
+	#return str(stored_cands)
+	return '''
 	<!doctype html>
 	<title>Uploaded File</title>
-	<h1>Just showing random from the library instead</h1>
-	'''
+	<h1>Placeholder %s</h1>
+	'''%str(my_hashes)
