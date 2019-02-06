@@ -189,7 +189,10 @@ def score_false_positives(candidates,my_spectrum):
 				except:
 					cos_squared=0
 			scored_candidates[cand]=cos_squared
-	return scored_candidates
+	return sort_by_val(scored_candidates)
+
+def sort_by_val(my_dict):
+	return sorted(my_dict.iteritems(), key=lambda (k,v): (-v,k))
 
 # version with spark, flask app is not run via spark-submit
 # so problem with importing this, it would give error upon sc

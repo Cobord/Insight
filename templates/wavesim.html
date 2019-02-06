@@ -3,7 +3,7 @@
 		<th>File Name</th>
 		<th>Cosine Similarity</th>
 	</tr>
-	{% for k, v in scored_matches.items() %}
+	{% for (k,v) in scored_matches %}
 		<tr>
 			<td>{{k}}</td>
 			<td>{{v}}</td>
