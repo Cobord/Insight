@@ -178,15 +178,17 @@ def compare_spectra(my_spectrum,their_spectrum):
 def score_false_positives(candidates,my_spectrum):
 	scored_candidates={}
 	for cand in candidates:
-		their_spectrum=to_spectrum(downsampling(almost_raw(cand)))
-                if all_match(my_spectrum,their_spectrum):
-                        cos_squared=1
-                else:
-			try:
-				cos_squared=np.dot(my_spectrum,their_spectrum)**2/(np.dot(my_spectrum,my_spectrum)*np.dot(their_spectrum,their_spectrum))
-			except:
-				cos_squared=0
-		scored_candidates[cand]=(lsh,cos_squared)
+		their_data=almost_raw(cand)
+		if (len(their_data)>=27):
+			their_spectrum=to_spectrum(downsampling(almost_raw(cand)))
+			if all_match(my_spectrum,their_spectrum):
+                        	cos_squared=1
+	                else:
+				try:
+					cos_squared=np.dot(my_spectrum,their_spectrum)**2/(np.dot(my_spectrum,my_spectrum)*np.dot(their_spectrum,their_spectrum))
+				except:
+					cos_squared=0
+			scored_candidates[cand]=cos_squared
 	return scored_candidates
 
 # version with spark, flask app is not run via spark-submit
