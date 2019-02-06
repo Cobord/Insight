@@ -1,5 +1,5 @@
 import os
-from pyspark import SparkContext, SparkConf
+#from pyspark import SparkContext, SparkConf
 import boto3
 from scipy.io import wavfile
 #from boto3.s3.connection import S3Connection
@@ -19,7 +19,6 @@ all_filenames=[]
 for object in my_bucket.objects.all():
 	all_filenames.append((object.bucket_name,object.key))
 print(all_filenames[:10])
-quit()
 
 desired_file=all_filenames[0]
 s3.Object(desired_file[0],desired_file[1]).download_file('/tmp/{desired_file[1]}')
@@ -32,21 +31,22 @@ s3.Object(desired_file[0],desired_file[1]).download_file('/tmp/{desired_file[1]}
 #conn=S3Connection(access_key_id,secret_key)
 #bucket=conn.get_bucket(my_bucket_name)
 #keys=bucket.list()
-conf=SparkConf().setAppName("Load From s3")
-sc=SparkContext(conf=conf)
+#conf=SparkConf().setAppName("Load From s3")
+#sc=SparkContext(conf=conf)
 
-res=sc.parallelize(all_filenames).filter(lambda (_,file): file[-4:]=='.wav')
-print(res.collect())
-print(res.count())
+#res=sc.parallelize(all_filenames).filter(lambda (_,file): file[-4:]=='.wav')
+#print(res.collect())
+#print(res.count())
 
 def readWav(filename,s3):
 	bucket,file=filename
 	#s3_location=bucket+".s3.amazonaws.com"+file
 	#s3_location="s3n://"+bucket+"/"+file
 	#s3_client.download_file(bucket,file,"local.wav")
-	freq,_=wavfile.read(s3_location)
-	return freq
-	#return bucket+file
+	#freq,_=wavfile.read(s3_location)
+	#return freq
+	return bucket+file
 
-print(res.map(lambda file: readWav(file)).take(10))
+print(readWav(desired_file,s3))
 
+#print(res.map(lambda file: readWav(file)).take(10))
