@@ -1,0 +1,4 @@
+.thick-border {
+	border: 4px solid blue;
+	border-collapse: collapse;
+}

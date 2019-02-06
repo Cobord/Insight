@@ -1,0 +1,12 @@
+<table class="centered thick-border">
+	<tr>
+		<th>File Name</th>
+		<th>Cosine Similarity</th>
+	</tr>
+	{% for k, v in scored_matches.items() %}
+		<tr>
+			<td>{{k}}</td>
+			<td>{{v}}</td>
+		</tr>
+	{% endfor  %}
+</table>

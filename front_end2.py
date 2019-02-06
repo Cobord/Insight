@@ -1,23 +1,15 @@
 import os
-from flask import Flask, flash, request, redirect, url_for
+from flask import Flask, flash, request, redirect, url_for, render_template
 from werkzeug.utils import secure_filename
 import wav_to_hash_flask
 import save_elastic_search2
 
 UPLOAD_FOLDER='./uploads/'
-ALLOWED_EXTENSIONS=set(['wav','txt'])
+ALLOWED_EXTENSIONS=set(['wav'])
 FUTURE_EXTENSIONS=set(['3gp','aa','wma','mp3','mp4','flac','aiff','au','ape','wv','m4a'])
 
 app = Flask(__name__)
 app.secret_key='92840184'
-
-@app.route('/hello/')
-def hello_world():
-	return 'Hello, World'
-
-@app.route('/user/<username>')
-def show_user_profile(username):
-	return 'User %s'%username
 
 def allowed_file(filename):
 	dotin=('.' in filename)
@@ -70,8 +62,9 @@ def uploadedFile(filename):
 	(my_hashes,my_spec)=wav_to_hash_flask.lsh_and_spectra_of_unknown(save_loc,'all_hp.npy')
 	potentials=save_elastic_search2.get_any_matches(my_hashes[0],my_hashes[1],my_hashes[2],my_hashes[3],my_hashes[4])
 	scored_cands=wav_to_hash_flask.score_false_positives(potentials,my_spec)
-	return '''
-	<!doctype html>
-	<title>Uploaded File</title>
-	<h1>Placeholder %s</h1>
-	'''%str(scored_cands)
+	#return '''
+	#<!doctype html>
+	#<title>Uploaded File</title>
+	#<h1>Placeholder %s</h1>
+	#'''%str(scored_cands)
+	return render_template("wavesim.html",scored_matches=scored_cands)
