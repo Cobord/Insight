@@ -47,7 +47,8 @@ def upload_file():
 		return redirect(request.url)
 	return '''
 	<!doctype html>
-	<title>Upload new Sound Clip</title>
+	<title>WaveSim</title>
+	<h1 style="color:blue;font-size:300%;" class="centered logo-format">WaveSim</h1>
 	<h1>Upload in wav format only</h1>
 	<form method=post enctype=multipart/form-data>
 	<input type=file name=file>
@@ -57,7 +58,8 @@ def upload_file():
 
 @app.route('/uploadedFile/<filename>')
 def uploadedFile(filename):
-	extension=filename.rsplit('.',1)[1].lower()
+	#extension=filename.rsplit('.',1)[1].lower()
+	extension='wav'
 	save_loc=os.path.join(UPLOAD_FOLDER,'temp.'+extension)
 	(my_hashes,my_spec)=wav_to_hash_flask.lsh_and_spectra_of_unknown(save_loc,'all_hp.npy')
 	potentials=save_elastic_search2.get_any_matches(my_hashes[0],my_hashes[1],my_hashes[2],my_hashes[3],my_hashes[4])
@@ -67,4 +69,4 @@ def uploadedFile(filename):
 	#<title>Uploaded File</title>
 	#<h1>Placeholder %s</h1>
 	#'''%str(scored_cands)
-	return render_template("wavesim.html",scored_matches=scored_cands)
+	return render_template("wavesim.html",scored_matches=scored_cands,found_match=(len(scored_cands)>0),your_wav=os.path.abspath(save_loc) )

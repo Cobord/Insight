@@ -58,5 +58,14 @@ def get_any_matches(hash1,hash2,hash3,hash4,hash5):
 
 	return set(result1+result2+result3+result4+result5)
 
+def get_any_matches2(my_hashes):
+	all_candidates=set([])
+	for i in range(len(my_hashes)):
+		cur_batch=es.search(index='insight',
+			body={'query':{'match':{'hash'+str(i+1):my_hashes[i]}}})['hits']['hits']
+		cur_batch=map(lambda entry:entry['_source']['file_name'],cur_batch)
+		all_candidates.update(cur_batch)
+	return all_candidates
+
 #z=get_any_matches(103,58,29,12,21)
 #print(z)

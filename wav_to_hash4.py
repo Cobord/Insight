@@ -177,9 +177,9 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 		#count=count+1
 
 def index_elastic_search(filename,res,es):
-	e={"file_name":filename,"hash1":hash1,
-        	"hash2":hash2,"hash3":hash3,"hash4":hash4,
-                "hash5":hash5}
+	e={"file_name":filename}
+	for i in range(len(res)):
+		e["hash"+str(i+1)]=res[i]
         es.index(index='insight',doc_type='wavHashes',id=hash(filename),body=e)
 	return
 

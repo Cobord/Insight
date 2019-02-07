@@ -1,3 +1,24 @@
+<!-- Not playing from your_wav right now
+<p style="font-size:200%">
+Here is the sound you uploaded:
+</p>
+<audio controls>
+<source src=your_wav type="audio/wav">
+Your browser does not support the audio element
+</audio>
+-->
+
+{% if found_match %}
+<p style="font-size:200%;" class="centered">{{scored_matches[0][0]}}<br>
+ was the most similar found from the library.<br>
+The cosine squared with your uploaded file was<br>
+ {{"%.3e"|format(scored_matches[0][1])}}</p>
+{% else %}
+<p style="font-size:200%;" class="centered">
+No matches were found
+</p>
+{% endif %}
+
 <table class="centered thick-border">
 	<tr>
 		<th>File Name</th>
