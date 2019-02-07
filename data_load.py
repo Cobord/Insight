@@ -42,10 +42,10 @@ def readWav(filename,s3):
 	bucket,file=filename
 	#s3_location=bucket+".s3.amazonaws.com"+file
 	#s3_location="s3n://"+bucket+"/"+file
-	#s3_client.download_file(bucket,file,"local.wav")
+	s3_client.download_file(bucket,file,"local.wav")
 	#freq,_=wavfile.read(s3_location)
 	#return freq
-	return bucket+file
+	#return bucket+file
 
 print(readWav(desired_file,s3))
 
