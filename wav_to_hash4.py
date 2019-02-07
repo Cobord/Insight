@@ -172,11 +172,11 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 		# saving the spectra leads to out of memory if spectrogram vs just FFT
 		#result=result.map(lambda (file,res):
 		#	(file,res,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
-		result.foreach(lambda (filename,res): index_elastic_search(filename,res))
+		result.foreach(lambda (filename,res): index_elastic_search(filename,res,es))
 		#result.saveAsTextFile(output_files_dest+("%i"%count))
 		#count=count+1
 
-def index_elastic_search(filename,res):
+def index_elastic_search(filename,res,es):
 	e={"file_name":filename,"hash1":hash1,
         	"hash2":hash2,"hash3":hash3,"hash4":hash4,
                 "hash5":hash5}
