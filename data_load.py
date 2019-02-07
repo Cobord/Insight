@@ -21,7 +21,7 @@ for object in my_bucket.objects.all():
 print(all_filenames[:10])
 
 desired_file=all_filenames[0]
-s3.Object(desired_file[0],desired_file[1]).download_file('/tmp/{desired_file[1]}')
+#s3.Object(desired_file[0],desired_file[1]).download_file('/tmp/{desired_file[1]}')
 
 #access_key_id=os.environ['AWS_ACCESS_KEY_ID']
 #secret_key=os.environ['AWS_SECRET_ACCESS_KEY']
@@ -38,15 +38,16 @@ s3.Object(desired_file[0],desired_file[1]).download_file('/tmp/{desired_file[1]}
 #print(res.collect())
 #print(res.count())
 
-def readWav(filename,s3):
+def readWav(filename,s3_client):
 	bucket,file=filename
 	#s3_location=bucket+".s3.amazonaws.com"+file
 	#s3_location="s3n://"+bucket+"/"+file
 	s3_client.download_file(bucket,file,"local.wav")
+	freq,_=wavfile.read("local.wav")
 	#freq,_=wavfile.read(s3_location)
-	#return freq
+	return freq
 	#return bucket+file
 
-print(readWav(desired_file,s3))
+print(readWav(desired_file,s3_client))
 
 #print(res.map(lambda file: readWav(file)).take(10))
