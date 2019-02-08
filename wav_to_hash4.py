@@ -180,7 +180,7 @@ def index_elastic_search(filename,res,es):
 	e={"file_name":filename}
 	for i in range(len(res)):
 		e["hash"+str(i+1)]=res[i]
-        es.index(index='insight',doc_type='wavHashes',id=hash(filename),body=e)
+        es.index(index='insight2',doc_type='wavHashes',id=hash(filename),body=e)
 	return
 
 if __name__ == "__main__":
