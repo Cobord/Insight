@@ -13,6 +13,11 @@ Your browser does not support the audio element
  was the most similar found from the library.<br>
 The cosine squared with your uploaded file was<br>
  {{"%.3e"|format(scored_matches[0][1])}}</p>
+{% if (scored_matches[0][1]==1)%}
+<p style="font-size:200%;" class="centered">In fact that was an exact match.<br>
+Your clip was already in the library.
+</p>
+{% endif %}
 {% else %}
 <p style="font-size:200%;" class="centered">
 No matches were found
