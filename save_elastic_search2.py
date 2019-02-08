@@ -33,7 +33,7 @@ def make_es(from_file):
 			es.index(index='insight',doc_type='wavHashes',id=hash(filename),body=e)
 
 if __name__=="__main__":
-	make_es('try_hashes.txt')
+	make_es('try_hashes2.txt')
 
 def get_any_matches(hash1,hash2,hash3,hash4,hash5):
 	result1=es.search(index='insight',

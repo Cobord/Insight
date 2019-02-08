@@ -27,7 +27,7 @@ No matches were found
 	{% for (k,v) in scored_matches %}
 		<tr>
 			<td>{{k}}</td>
-			<td>{{v}}</td>
+			<td>{{"%.3e"|format(v)}}</td>
 		</tr>
 	{% endfor  %}
 </table>

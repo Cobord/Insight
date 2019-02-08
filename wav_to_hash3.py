@@ -150,7 +150,7 @@ def format_known_strings(filename,hashes):
 def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.txt",output_files_dest="hdfs://ec2-52-0-185-8.compute-1.amazonaws.com:9000/user/output",output_hps="all_hp"):
 	(all_hyperplanes_mat,num_hp_per_arrangement)=construct_hyperplanes_2(input_files_prefix,output_hps)
 	all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
-	subdivisions=[1,1,1,1,1]
+	subdivisions=[1,1,1,1,1,1,1,1,1,1]
 	file_list=glob.glob(input_files_prefix+"*.wav")
 	#result_divided=sc.textFile(input_file_list).randomSplit(subdivisions)
 	result_divided=sc.parallelize(file_list).randomSplit(subdivisions)
