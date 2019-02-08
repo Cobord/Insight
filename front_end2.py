@@ -69,5 +69,5 @@ def uploadedFile(filename):
 	#<!doctype html>
 	#<title>Uploaded File</title>
 	#<h1>Placeholder %s</h1>
-	#'''%str(scored_cands)
+	#'''%str(potentials)
 	return render_template("wavesim.html",scored_matches=scored_cands,found_match=(len(scored_cands)>0),your_wav=os.path.abspath(save_loc) )

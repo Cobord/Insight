@@ -48,6 +48,7 @@ def readWav(filename,s3_client):
 	return freq
 	#return bucket+file
 
+print(desired_file)
 print(readWav(desired_file,s3_client))
 
 #print(res.map(lambda file: readWav(file)).take(10))

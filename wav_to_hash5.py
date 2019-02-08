@@ -7,6 +7,15 @@ import numpy as np
 import glob
 import boto3
 
+from pyspark import SparkConf, SparkContext
+from pyspark.mllib.random import RandomRDDs
+
+conf = (SparkConf()
+        .setMaster("local")
+        .setAppName("spectra")
+        .set("spark.executor.memory","1g"))
+sc = SparkContext(conf=conf)
+
 def get_interval_time():
 	return 30
 
@@ -46,20 +55,20 @@ def almost_raw(filename):
 	raw_data=periodize(raw_data.flatten(),len_needed)
 	return raw_data
 
-def almost_raw_s3(filename):
-        interval_time=get_interval_time()
+def almost_raw_s3(bucket,filename):
+	interval_time=get_interval_time()
         samp_freq=get_samp_freq()
         len_needed=interval_time*samp_freq
         raw_data=np.zeros(len_needed)
-        s3_client=boto3.client('s3')
-        s3_client.download_file('sound-files-lsh-191102976',filename,"local.wav")
+	s3_client=boto3.client('s3')
+        s3_client.download_file(bucket,filename,filename[8:])
         try:
-                freqs,raw_data=wavfile.read("local.wav")
-        except:
-                return np.zeros(26)
-        if (raw_data.ndim==2):
-                raw_data=raw_data.T[0]
-        raw_data=periodize(raw_data.flatten(),len_needed)
+		freqs,raw_data=wavfile.read(filename[8:])
+	except:
+		return np.zeros(26)
+	if (raw_data.ndim==2):
+		raw_data=raw_data.T[0]
+	raw_data=periodize(raw_data.flatten(),len_needed)
         return raw_data
 
 # downsampling step
@@ -115,6 +124,12 @@ def simplify_hash_point(int_list,num_hp_per_arrangement):
 def int_list_to_num(int_list):
 	return np.array([int_list[i]<<i for i in range(len(int_list))]).sum()
 
+# a random num_hps by ambient_dimension matrix
+def construct_hyperplanes(num_hp_arrangements,num_hp_per_arrangement,ambient_dimension):
+	num_hps=num_hp_arrangements*num_hp_per_arrangement
+	all_hp_rdd = RandomRDDs.normalVectorRDD(sc,num_hps,ambient_dimension)
+	return np.matrix(all_hp_rdd.collect())
+
 # the spectrograms have adjustable parameters meaning their lengths are inconsistent across runs
 # so instead this computes the length by performing the operation on one file
 # and getting the needed length
@@ -133,6 +148,13 @@ def find_hyperplane_dims(input_files_prefix):
 	num_hp_arrangements=get_num_hp_arrangements()
 	return (num_hp_arrangements,num_hp_per_arrangement,found_dim)
 
+def construct_hyperplanes_2(input_file_prefix,save_location):
+	(arg1,arg2,arg3)=find_hyperplane_dims(input_file_prefix)
+	all_hps=construct_hyperplanes(arg1,arg2,arg3)
+	if (not save_location is None):
+		np.save(save_location,all_hps)
+	return (all_hps,arg2)
+
 # format with ; for parsing ease, split on ;
 def format_known_strings(filename,hashes):
 	hashes_string=""
@@ -140,6 +162,45 @@ def format_known_strings(filename,hashes):
 		hashes_string+=str(hash)
 		hashes_string+=";"
 	return hashes_string+filename
+
+# makes the hyperplanes and compute the LSHs for all the files starting with the prefix
+def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.txt",output_files_dest="hdfs://ec2-52-0-185-8.compute-1.amazonaws.com:9000/user/output",output_hps="all_hp"):
+	(all_hyperplanes_mat,num_hp_per_arrangement)=construct_hyperplanes_2(input_files_prefix,output_hps)
+	all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
+	subdivisions=[1 for x in range(10)]
+	s3=boto3.resource('s3')
+	my_bucket=s3.Bucket("sound-files-lsh-191102976")
+	all_s3_filenames=[]
+	for object in my_bucket.objects.all():
+		bucket_name=str(object.bucket_name)
+		file_name=str(object.key)
+		if file_name.endswith('wav'):
+			all_s3_filenames.append((bucket_name,file_name))
+	#file_list=glob.glob(input_files_prefix+"*.wav")
+	#result_divided=sc.textFile(input_file_list).randomSplit(subdivisions)
+	result_divided=sc.parallelize(all_s3_filenames).randomSplit(subdivisions)
+	count=0
+	for result in result_divided:
+		#result=result.map(lambda name:input_files_prefix+name)
+		result=(result.map(lambda (bucket,file): (file,almost_raw_s3(bucket,file)))
+			.filter(lambda (file,res): len(res)>27)
+			.map(lambda (file,res): (file,downsampling(res)) )
+			.map(lambda (file,res): (file,to_spectrum(res)) )
+			)
+		result=result.map(lambda (file,res):
+        		(file,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
+		# saving the spectra leads to out of memory if spectrogram vs just FFT
+		#result=result.map(lambda (file,res):
+		#	(file,res,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
+		#result=result.map(lambda (filename,spec,res): format_known_strings(filename,res))
+		result=result.map(lambda (filename,res): format_known_strings(filename,res))
+		# call the ElasticSearch functionality here
+		result.saveAsTextFile(output_files_dest+("%i"%count))
+		count=count+1
+
+if __name__ == "__main__":
+	create_library()
+	quit()
 
 def any_matches(lhs1,lhs2):
 	length=min(len(lhs1),len(lhs2))
@@ -176,6 +237,19 @@ def lsh_and_spectra_of_unknown(unknown_file_full_path,all_hyperplanes_loc):
 	my_lsh=to_lsh(my_spectrum,all_hyperplanes_mat,num_hp_per_arrangement)
 	return (my_lsh,my_spectrum)
 
+# for temporary purposes without using results saved into ElasticSearch
+# normally this function should not have access to the RDD result
+# needs to evaluate spectrum of unknown_file anyway so return that computation
+# don't waste the FFT expense
+#def candidate_neighbors(unknown_file,all_hyperplanes_mat):
+#	try:
+#		my_spectrum=to_spectrum(downsampling(almost_raw(input_files_prefix+unknown_file)))
+#	except:
+#		return ([],0)
+#	my_lsh=to_lsh(my_spectrum,all_hyperplanes_mat,num_hp_per_arrangement)
+#	return (result.filter(lambda (file,spec,res): any_matches(res,my_lsh))
+#		.collect(),my_spectrum)
+
 def compare_spectra(my_spectrum,their_spectrum):
         if all_match(my_spectrum,their_spectrum):
 		cos_squared=1
@@ -194,35 +268,51 @@ def compare_spectra(my_spectrum,their_spectrum):
 # small number of candidates so this is done sequentially not via cluster overhead
 def score_false_positives(candidates,my_spectrum):
 	scored_candidates={}
-	for cand in candidates:
-		try:
-			their_data=almost_raw_s3(cand)
-		except:
-			their_data=np.zeros(26)
-		if (len(their_data)>=27):
-			their_spectrum=to_spectrum(downsampling(almost_raw_s3(cand)))
-			if all_match(my_spectrum,their_spectrum):
-                        	cos_squared=1
-	                else:
-				try:
-					cos_squared=np.dot(my_spectrum,their_spectrum)**2/(np.dot(my_spectrum,my_spectrum)*np.dot(their_spectrum,their_spectrum))
-				except:
-					cos_squared=0
-			scored_candidates[cand]=cos_squared
-	return sort_by_val(scored_candidates)
-
-def sort_by_val(my_dict):
-	return sorted(my_dict.iteritems(), key=lambda (k,v): (-v,k))
+	for (cand,lsh) in candidates:
+		their_spectrum=to_spectrum(downsampling(almost_raw(cand)))
+                if all_match(my_spectrum,their_spectrum):
+                        cos_squared=1
+                else:
+			try:
+				cos_squared=np.dot(my_spectrum,their_spectrum)**2/(np.dot(my_spectrum,my_spectrum)*np.dot(their_spectrum,their_spectrum))
+			except:
+				cos_squared=0
+		scored_candidates[cand]=(lsh,cos_squared)
+	return scored_candidates
 
 # version with spark, flask app is not run via spark-submit
 # so problem with importing this, it would give error upon sc
 # but if you do have spark context can use this one
-#def score_false_positives_2(candidates,my_spectrum):
-#	result=(sc.parallelize(candidates).map(lambda cand:(cand,almost_raw(cand)))
-#		.filter(lambda (cand,res): len(res)>27)
-#		.map(lambda (cand,res): (cand,downsampling(res)) )
-#		.map(lambda (cand,res): (cand,to_spectrum(res)) )
-#		.map(lambda (cand,res): (cand,compare_spectra(res,my_spectrum)) )
-#		)
-#	return result.collect()
+def score_false_positives_2(candidates,my_spectrum):
+	result=(sc.parallelize(candidates).map(lambda cand:(cand,almost_raw(cand)))
+		.filter(lambda (cand,res): len(res)>27)
+		.map(lambda (cand,res): (cand,downsampling(res)) )
+		.map(lambda (cand,res): (cand,to_spectrum(res)) )
+		.map(lambda (cand,res): (cand,compare_spectra(res,my_spectrum)) )
+		)
+	return result.collect()
+
+
+# get the andidates and evaluate them using the two previous functions
+#def best_neighbors(unknown_file,all_hyperplanes_mat):
+#	(candidates,my_spectrum)=candidate_neighbors(unknown_file,all_hyperplanes_mat)
+#	scored_candidates=score_false_positives(candidates,my_spectrum)
+#	#print(scored_candidates)
+#	#for key,value in sorted(scored_candidates.iteritems(), key = lambda (k,v): v[1]):
+#	#	print("%s : %s" % (key,value))
+#	return scored_candidates
+
+#def best_neighbors_slow(unknown_file,all_hyperplanes_mat,result):
+#	(_,my_spectrum)=candidate_neighbors(unknown_file,all_hyperplanes_mat)
+#	result_slow=result.map(lambda (filename,their_spec,hash): (-compare_spectra(my_spectrum,their_spec),filename))
+#	print(result_slow.takeOrdered(10))
+#	return
+
+# Move to another file so that this becomes the imported part and these
+# test cases are elsewhere
+#print("Candidate Neighbors of aerosol can")
+#print(candidate_neighbors("arosol-can-spray-022.wav",all_hyperplanes_BC.value))
+#print(candidate_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_BC.value))
+#print(best_neighbors("aerosol-can-spray-01.wav",all_hyperplanes_BC.value))
+#best_neighbors_slow("aerosol-can-spray-01.wav",all_hyperplanes_BC.value)
 
