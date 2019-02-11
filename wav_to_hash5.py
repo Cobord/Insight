@@ -31,6 +31,8 @@ def get_num_hp_arrangements():
 
 # extends periodically so it is the right length len_needed
 def periodize(signal,len_needed):
+	import numpy as np
+	import math
 	current_len=len(signal)
 	to_expand=int(math.ceil(len_needed/current_len))
 	signal_expanded=np.tile(signal,to_expand*2)
@@ -43,6 +45,8 @@ def periodize(signal,len_needed):
 # that removes the fileames that didn't give a wav file that could
 # be opened
 def almost_raw(filename):
+	from scipy.io import wavfile
+	import numpy as np
 	interval_time=get_interval_time()
 	samp_freq=get_samp_freq()
 	len_needed=interval_time*samp_freq
@@ -57,6 +61,10 @@ def almost_raw(filename):
 	return raw_data
 
 def almost_raw_s3(bucket,filename):
+	import boto3
+	import os
+	import numpy as np
+	from scipy.io import wavfile
 	interval_time=get_interval_time()
         samp_freq=get_samp_freq()
         len_needed=interval_time*samp_freq
@@ -76,12 +84,16 @@ def almost_raw_s3(bucket,filename):
 
 # downsampling step
 def downsampling(raw_data):
+	from scipy.signal import decimate
 	down_factor=get_down_factor()
 	return decimate(raw_data,down_factor)
 
 # from the downsampled periodized data give spectrum
 # spectrum is given as all the real parts followed by all the imaginary parts
 def to_spectrum(modified_data):
+	import math
+	import numpy as np
+	from scipy.signal import stft
 	#fourier=fft(modified_data)
 	#length=int(len(fourier)/2)
 	#fourier=fourier[:length]
@@ -107,6 +119,7 @@ def to_lsh(spectra,all_hyperplanes_mat,num_hp_per_arr):
 # then break it up into num_hp_per_arr chunks and encode each of those
 # as a single integer by binary
 def hash_point(point,all_hyperplanes_mat,num_hp_per_arr):
+	import numpy as np
 	needed_length=all_hyperplanes_mat.shape[1]
 	cur_length=point.shape[0]
 	if (cur_length>needed_length):
@@ -125,6 +138,7 @@ def simplify_hash_point(int_list,num_hp_per_arrangement):
 
 # the binary step above
 def int_list_to_num(int_list):
+	import numpy as np
 	return np.array([int_list[i]<<i for i in range(len(int_list))]).sum()
 
 # a random num_hps by ambient_dimension matrix
