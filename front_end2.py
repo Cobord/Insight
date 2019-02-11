@@ -65,6 +65,7 @@ def uploadedFile(filename):
 	potentials=save_elastic_search2.get_any_matches(my_hashes[0],my_hashes[1],my_hashes[2],my_hashes[3],my_hashes[4])
 	#potentials=save_elastic_search2.get_any_matches2(my_hashes)
 	scored_cands=wav_to_hash_flask.score_false_positives(potentials,my_spec)
+	scored_cands=scored_cands[:10]
 	#return '''
 	#<!doctype html>
 	#<title>Uploaded File</title>

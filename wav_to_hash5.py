@@ -6,6 +6,7 @@ import math
 import numpy as np
 import glob
 import boto3
+import os
 
 from pyspark import SparkConf, SparkContext
 from pyspark.mllib.random import RandomRDDs
@@ -69,7 +70,9 @@ def almost_raw_s3(bucket,filename):
 	if (raw_data.ndim==2):
 		raw_data=raw_data.T[0]
 	raw_data=periodize(raw_data.flatten(),len_needed)
-        return raw_data
+        if os.path.exists(filename[8:]):
+		os.remove(filename[8:])
+	return raw_data
 
 # downsampling step
 def downsampling(raw_data):
