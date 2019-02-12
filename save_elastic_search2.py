@@ -3,20 +3,6 @@ import json
 
 es = Elasticsearch([{'host':'localhost','port':9200}])
 
-#e1={"file_name": "Placeholder1.wav","hash1": 103,
-#	"hash2": 290, "hash3": 308, "hash4": 3, "hash5": 0}
-#e2={"file_name": "Placeholder2.wav","hash1": 103,
-#        "hash2": 90, "hash3": 38, "hash4": 13, "hash5": 20}
-#e3={"file_name": "Placeholder3.wav","hash1": 13,
-#        "hash2": 29, "hash3": 3, "hash4": 93, "hash5": 200}
-
-#all_files=[(1,e1),(2,e2),(3,e3)]
-
-#for (index,file) in all_files:
-#	es.index(index='insight',doc_type='wavHashes',id=index,body=file)
-
-#print(es.get(index='insight',doc_type='wavHashes',id=2)['_source']['file_name'])
-
 def make_es(from_file):
 	with open(from_file) as f:
 		for line in f.readlines():
@@ -35,6 +21,8 @@ def make_es(from_file):
 if __name__=="__main__":
 	make_es('try_hashes2.txt')
 
+# provide 5 hashes, returns those file_name's such that
+# their hash1 matches the provided hash1 or for hash2 etc
 def get_any_matches(hash1,hash2,hash3,hash4,hash5):
 	result1=es.search(index='insight',
 		body={'query':{'match':{'hash1': hash1}}})['hits']['hits']
@@ -58,6 +46,8 @@ def get_any_matches(hash1,hash2,hash3,hash4,hash5):
 
 	return set(result1+result2+result3+result4+result5)
 
+# a version that can generalize to other numbers of times hashed
+# besides 5
 def get_any_matches2(my_hashes):
 	all_candidates=set([])
 	for i in range(len(my_hashes)):
@@ -66,6 +56,3 @@ def get_any_matches2(my_hashes):
 		cur_batch=map(lambda entry:entry['_source']['file_name'],cur_batch)
 		all_candidates.update(cur_batch)
 	return all_candidates
-
-#z=get_any_matches(103,58,29,12,21)
-#print(z)

@@ -21,7 +21,7 @@ conf = (SparkConf()
 sc = SparkContext(conf=conf)
 
 def get_interval_time():
-	return 10
+	return 30
 
 def get_samp_freq():
 	return 44100
@@ -61,6 +61,29 @@ def almost_raw(filename):
 	if (raw_data.ndim==2):
 		raw_data=raw_data.T[0]
 	raw_data=periodize(raw_data.flatten(),len_needed)
+	return raw_data
+
+def download_from_s3(bucket,filename):
+	import boto3
+	import os
+	s3_client=boto3.client('s3','us-east-1')
+	s3_client.download_file(bucket,filename,filename[8:])
+	return
+
+def get_raw_from_local(filename):
+	import numpy as np
+	from scipy.io import wavfile
+	interval_time=get_interval_time()
+	samp_freq=get_samp_freq()
+	len_needed=interval_time*samp_freq
+	raw_data=np.zeros(len_needed)
+	try:
+                freqs,raw_data=wavfile.read(filename[8:])
+        except:
+                return np.zeros(26)
+        if (raw_data.ndim==2):
+                raw_data=raw_data.T[0]
+        raw_data=periodize(raw_data.flatten(),len_needed)
 	return raw_data
 
 def almost_raw_s3(bucket,filename):
@@ -107,7 +130,7 @@ def to_spectrum(modified_data):
 	samp_freq=get_samp_freq()
 	down_factor=get_down_factor()
 	num_per_sec=int(math.ceil(samp_freq/down_factor))
-	fourier=stft(modified_data,nperseg=num_per_sec*3,noverlap=num_per_sec,return_onesided=True,padded=False)[2].flatten()
+	fourier=stft(modified_data,nperseg=num_per_sec*5,noverlap=num_per_sec,return_onesided=True,padded=False)[2].flatten()
 	fourier=np.append(np.real(fourier),np.imag(fourier))
 	#return to_return/math.sqrt((to_return**2).sum())
 	return fourier
@@ -198,25 +221,19 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 		file_name=str(object.key)
 		if file_name.endswith('wav'):
 			all_s3_filenames.append((bucket_name,file_name))
-	#file_list=glob.glob(input_files_prefix+"*.wav")
-	#result_divided=sc.textFile(input_file_list).randomSplit(subdivisions)
 	result_divided=sc.parallelize(all_s3_filenames).randomSplit(subdivisions)
 	count=0
 	for result in result_divided:
-		#result=result.map(lambda name:input_files_prefix+name)
+		#result.foreach(lambda (bucket,file): download_from_s3(bucket,file))
 		result=(result.map(lambda (bucket,file): (file,almost_raw_s3(bucket,file)))
+		#result=(result.map(lambda (bucket,file):  get_raw_from_local(file) )
 			.filter(lambda (file,res): len(res)>27)
 			.map(lambda (file,res): (file,downsampling(res)) )
 			.map(lambda (file,res): (file,to_spectrum(res)) )
 			)
 		result=result.map(lambda (file,res):
         		(file,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
-		# saving the spectra leads to out of memory if spectrogram vs just FFT
-		#result=result.map(lambda (file,res):
-		#	(file,res,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
-		#result=result.map(lambda (filename,spec,res): format_known_strings(filename,res))
 		result=result.map(lambda (filename,res): format_known_strings(filename,res))
-		# call the ElasticSearch functionality here
 		result.coalesce(1).saveAsTextFile(output_files_dest+("%i"%count))
 		count=count+1
 
