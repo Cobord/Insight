@@ -6,6 +6,7 @@ import math
 import numpy as np
 import glob
 import boto3
+import boto
 import os
 
 from pyspark import SparkConf, SparkContext
@@ -13,11 +14,13 @@ from pyspark.mllib.random import RandomRDDs
 
 from elasticsearch import Elasticsearch
 
-conf = (SparkConf()
-        .setMaster("local")
-        .setAppName("spectra")
-        .set("spark.executor.memory","1g"))
-#conf = SparkConf().setAppName("spectra").set("spark.executor.memory","1g")
+from awscredentials import *
+
+#conf = (SparkConf()
+#        .setMaster("local")
+#        .setAppName("spectra")
+#        .set("spark.executor.memory","1g"))
+conf = SparkConf().setAppName("spectra").set("spark.executor.memory","1g")
 sc = SparkContext(conf=conf)
 
 def get_interval_time():
@@ -63,8 +66,10 @@ def almost_raw(filename):
 	raw_data=periodize(raw_data.flatten(),len_needed)
 	return raw_data
 
-def almost_raw_s3(bucket,filename):
+def almost_raw_s3(bucket,filename,access_key,secret_key):
 	import boto3
+	import boto
+	from boto.s3.connection import S3Connection
 	import os
 	import numpy as np
 	from scipy.io import wavfile
@@ -72,9 +77,25 @@ def almost_raw_s3(bucket,filename):
         samp_freq=get_samp_freq()
         len_needed=interval_time*samp_freq
         raw_data=np.zeros(len_needed)
-	s3_client=boto3.client('s3')
-        s3_client.download_file(bucket,filename,filename[8:])
-        try:
+	#s3_client=boto3.client('s3',aws_access_key_id=access_key,
+	#	aws_secret_access_key=secret_key,region_name='us-east-1')
+	#s3_client=boto3.client('s3')
+        #s3_client.download_file(bucket,filename,filename[8:])
+	#session=boto3.Session(aws_access_key_id=access_key,
+	#	aws_secret_access_key=secret_key,region_name='us-east-1')
+	#session=boto3.Session()
+	#s3_resource=session.resource('s3',aws_access_key_id=access_key,
+	#	aws_secret_access_key=secret_key)
+	#s3_resource=session.resource('s3')
+	#s3_resource.Bucket(bucket).download_file(filename,filename[8:])
+        #conn=S3Connection(access_key,secret_key,host="localhost",port=9000,is_secure=False,calling_format=boto.s3.connection.OrdinaryCallingFormat())
+	#key=conn.get_bucket(bucket,validate=False).get_key(filename,validate=False)
+	#key.get_contents_to_filename(filename[8:])
+	s3 = boto3.resource('s3')
+	s3.Object(bucket,filename).download_file(filename[8:])
+	#s3.meta.client.download_file(bucket,filename,filename[8:])
+	try:
+		#s3.Bucket(bucket).download_file(filename,filename[8:])
 		freqs,raw_data=wavfile.read(filename[8:])
 	except:
 		return np.zeros(26)
@@ -183,9 +204,18 @@ def format_known_strings(filename,hashes):
 		hashes_string+=";"
 	return hashes_string+filename
 
+def add_to_es(filename,res,es):
+	e={"file_name":filename,"hash1":res[0],
+           	"hash2":res[1],"hash3":res[2],"hash4":res[3],
+        	"hash5":res[4]}
+        es.index(index='insight',doc_type='wavHashes',
+        	id=hash(filename),body=e)
+	return
+
 # makes the hyperplanes and compute the LSHs for all the files starting with the prefix
 def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.txt",output_files_dest="hdfs://ec2-52-0-185-8.compute-1.amazonaws.com:9000/user/output",output_hps="all_hp"):
 	from elasticsearch import Elasticsearch
+	from awscredentials import access_key,secret_key
 	es = Elasticsearch([{'host':'localhost','port':9200}])
 	(all_hyperplanes_mat,num_hp_per_arrangement)=construct_hyperplanes_2(input_files_prefix,output_hps)
 	all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
@@ -198,27 +228,27 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 		file_name=str(object.key)
 		if file_name.endswith('wav'):
 			all_s3_filenames.append((bucket_name,file_name))
-	#file_list=glob.glob(input_files_prefix+"*.wav")
-	#result_divided=sc.textFile(input_file_list).randomSplit(subdivisions)
-	result_divided=sc.parallelize(all_s3_filenames).randomSplit(subdivisions)
-	count=0
-	for result in result_divided:
-		#result=result.map(lambda name:input_files_prefix+name)
-		result=(result.map(lambda (bucket,file): (file,almost_raw_s3(bucket,file)))
-			.filter(lambda (file,res): len(res)>27)
+	all_s3_filenames=all_s3_filenames[:100]
+	batch_size=int(len(all_s3_filenames)/10)
+	for k in range(10):
+		all_batches=[]
+		for i in range(k*batch_size,k*batch_size+batch_size,5):
+			current_subbatch=[]
+			for j in range(5):
+				(bucket,file)=all_s3_filenames[i+j]
+				current_subbatch.append( (file,almost_raw_s3(bucket,file,access_key,secret_key)))
+			all_batches.append(sc.parallelize(current_subbatch))
+		result=sc.union(all_batches)
+		result=(result.filter(lambda (file,res): len(res)>27)
 			.map(lambda (file,res): (file,downsampling(res)) )
 			.map(lambda (file,res): (file,to_spectrum(res)) )
 			)
 		result=result.map(lambda (file,res):
         		(file,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
-		# saving the spectra leads to out of memory if spectrogram vs just FFT
-		#result=result.map(lambda (file,res):
-		#	(file,res,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
-		#result=result.map(lambda (filename,spec,res): format_known_strings(filename,res))
+		result.foreach(lambda (filename,res): add_to_es(filename,res,es) )
 		result=result.map(lambda (filename,res): format_known_strings(filename,res))
-		# call the ElasticSearch functionality here
-		result.coalesce(1).saveAsTextFile(output_files_dest+("%i"%count))
-		count=count+1
+		result.repartition(1).saveAsTextFile(output_files_dest+("%i"%k))
+	return
 
 if __name__ == "__main__":
 	create_library()

@@ -3,3 +3,8 @@ wavFiles/*
 uploads/*
 ~/elastic_search/*
 ~/*
+awscredentials.py
+awscredentials.pyc
+local.wav
+try_hashes.txt
+try_hashes2.txt
