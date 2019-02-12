@@ -14,7 +14,7 @@ hdfs dfs -rm -r /user/output9
 
 rm try_hashes2.txt
 
-$SPARK_HOME/bin/spark-submit --master spark://ip-10-0-0-9:7077 --jars $SPARK_HOME/jars/elasticsearch-hadoop-2.1.0.Beta2.jar wav_to_hash5.py
+$SPARK_HOME/bin/spark-submit --master spark://ip-10-0-0-9:7077 --jars $SPARK_HOME/jars/elasticsearch-hadoop-2.1.0.Beta2.jar wav_to_hash6.py
 
 hdfs dfs -cat /user/output0/part-00000 >> try_hashes2.txt
 hdfs dfs -cat /user/output1/part-00000 >> try_hashes2.txt
