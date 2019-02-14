@@ -233,9 +233,20 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 			)
 		result=result.map(lambda (file,res):
         		(file,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
+		#collected=result.collect()
+		#for (filename,res) in collected:
+		#	add_to_es(filename,res,es)
 		result=result.map(lambda (filename,res): format_known_strings(filename,res))
 		result.coalesce(1).saveAsTextFile(output_files_dest+("%i"%count))
 		count=count+1
+
+def add_to_es(filename,res,es):
+	e={"file_name":filename,"hash1":res[0],
+                "hash2":res[1],"hash3":res[2],"hash4":res[3],
+                "hash5":res[4]}
+        es.index(index='insight',doc_type='wavHashes',
+                id=hash(filename),body=e)
+        return
 
 if __name__ == "__main__":
 	create_library()

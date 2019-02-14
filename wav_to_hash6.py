@@ -14,14 +14,19 @@ from pyspark.mllib.random import RandomRDDs
 
 from elasticsearch import Elasticsearch
 
-from awscredentials import *
+from awscredentials import access_key, secret_key
 
 #conf = (SparkConf()
 #        .setMaster("local")
 #        .setAppName("spectra")
 #        .set("spark.executor.memory","1g"))
-conf = SparkConf().setAppName("spectra").set("spark.executor.memory","1g")
+conf = SparkConf().setAppName("spectra").set("spark.executor.memory","3g")
 sc = SparkContext(conf=conf)
+sc.setSystemProperty("com.amazonaws.services.s3.enableV4","true")
+sc._jsc.hadoopConfiguration().set("fs.s3a.access.key",access_key)
+sc._jsc.hadoopConfiguration().set("fs.s3a.endpoint","s3.us-east-1.amazonaws.com")
+sc._jsc.hadoopConfiguration().set("spark.hadoop.fs.s3a.impl","org.apache.hadoop.fs.s3a.S3AFileSystem")
+sc._jsc.hadoopConfiguration().set("com.amazonaws.service.s3.enableV4","true")
 
 def get_interval_time():
 	return 10
@@ -30,7 +35,7 @@ def get_samp_freq():
 	return 44100
 
 def get_down_factor():
-	return 5
+	return 50
 
 def get_num_hp_arrangements():
 	return 5
@@ -91,14 +96,14 @@ def almost_raw_s3(bucket,filename,access_key,secret_key):
         #conn=S3Connection(access_key,secret_key,host="localhost",port=9000,is_secure=False,calling_format=boto.s3.connection.OrdinaryCallingFormat())
 	#key=conn.get_bucket(bucket,validate=False).get_key(filename,validate=False)
 	#key.get_contents_to_filename(filename[8:])
-	#s3 = boto3.resource('s3')
-	#s3.Object(bucket,filename).download_file(filename[8:])
+	s3 = boto3.resource('s3')
+	s3.Object(bucket,filename).download_file(filename[8:])
 	#s3.meta.client.download_file(bucket,filename,filename[8:])
-	conn = S3Connection(access_key,secret_key)
-	bucket_obj = conn.get_bucket(bucket,validate=False)
-	key_obj=bucket_obj.get_key(filename)
-	file_loc=key_obj.get_contents_to_filename(filename[8:])
-	key_obj.get_contents_to_file(file_loc)
+	#conn = S3Connection(access_key,secret_key)
+	#bucket_obj = conn.get_bucket(bucket,validate=False)
+	#key_obj=bucket_obj.get_key(filename)
+	#file_loc=key_obj.get_contents_to_filename(filename[8:])
+	#key_obj.get_contents_to_file(file_loc)
 	try:
 		#s3.Bucket(bucket).download_file(filename,filename[8:])
 		freqs,raw_data=wavfile.read(filename[8:])
@@ -109,13 +114,18 @@ def almost_raw_s3(bucket,filename,access_key,secret_key):
 	raw_data=periodize(raw_data.flatten(),len_needed)
         if os.path.exists(filename[8:]):
 		os.remove(filename[8:])
-	return raw_data
+	if len(raw_data)==len_needed:
+		return raw_data
+	else:
+		return np.zeros(26)
 
 # downsampling step
 def downsampling(raw_data):
-	from scipy.signal import decimate
+	#from scipy.signal import decimate
 	down_factor=get_down_factor()
-	return decimate(raw_data,down_factor)
+	orig_len=len(raw_data)
+	#return decimate(raw_data,down_factor)
+	return [raw_data[i] for i in range(0,orig_len,down_factor)]
 
 # from the downsampled periodized data give spectrum
 # spectrum is given as all the real parts followed by all the imaginary parts
@@ -233,7 +243,6 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 		file_name=str(object.key)
 		if file_name.endswith('wav'):
 			all_s3_filenames.append((bucket_name,file_name))
-	all_s3_filenames=all_s3_filenames[:100]
 	batch_size=int(len(all_s3_filenames)/10)
 	for k in range(10):
 		all_batches=[]
@@ -242,17 +251,21 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 			for j in range(5):
 				(bucket,file)=all_s3_filenames[i+j]
 				current_subbatch.append( (file,almost_raw_s3(bucket,file,access_key,secret_key)))
-			all_batches.append(sc.parallelize(current_subbatch))
-		result=sc.union(all_batches)
-		result=(result.filter(lambda (file,res): len(res)>27)
-			.map(lambda (file,res): (file,downsampling(res)) )
-			.map(lambda (file,res): (file,to_spectrum(res)) )
-			)
+			all_batches.extend(current_subbatch)
+		result=sc.parallelize(all_batches)
+		#print("Count: "+str(result.count()) )
+		result=result.filter(lambda (file,res): len(res)>27)
+		result=result.map(lambda (file,res): (file,downsampling(res)) )
+		result=result.map(lambda (file,res): (file,to_spectrum(res)) )
+		#print("Count: "+str(result.count()) )
 		result=result.map(lambda (file,res):
         		(file,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
-		result.foreach(lambda (filename,res): add_to_es(filename,res,es) )
-		result=result.map(lambda (filename,res): format_known_strings(filename,res))
-		result.repartition(1).saveAsTextFile(output_files_dest+("%i"%k))
+		#collected=result.collect()
+		#for (filename,res) in collected:
+		#	add_to_es(filename,res,es)
+		#result.foreach(lambda (filename,res): add_to_es(filename,res,es) )
+		result=result.repartition(1).map(lambda (filename,res): format_known_strings(filename,res))
+		result.saveAsTextFile(output_files_dest+("%i"%k))
 	return
 
 if __name__ == "__main__":
