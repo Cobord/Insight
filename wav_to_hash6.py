@@ -269,7 +269,9 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 		#	add_to_es(filename,res,es)
 		#result.foreach(lambda (filename,res): add_to_es(filename,res,es) )
 		result=result.map(lambda (filename,res): format_known_strings(filename,res))
-		result.saveAsTextFile(output_files_dest+("%i"%k))
+		#result.saveAsTextFile(output_files_dest+("%i"%k))
+		collected=result.collect()
+		print(collected)
 	return
 
 if __name__ == "__main__":
