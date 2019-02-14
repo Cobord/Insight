@@ -148,7 +148,7 @@ def to_spectrum(modified_data):
 	#return to_return/math.sqrt((to_return**2).sum())
 	return fourier
 
-def to_lsh_dumb(spectra):
+def to_lsh_fixed_seed(spectra,num_hp_arrs,num_hp_per_arr,spectrogram_width):
 	return [spectra[i] for i in range(5)]
 
 # from a spectral data, the eqs defining hyperplanes
@@ -235,6 +235,7 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 	from elasticsearch import Elasticsearch
 	from awscredentials import access_key,secret_key
 	es = Elasticsearch([{'host':'localhost','port':9200}])
+	(num_hp_arrs,num_hp_per_arr,spectrogram_width)=find_hyperplane_dims(input_files_prefix)
 	#(all_hyperplanes_mat,num_hp_per_arrangement)=construct_hyperplanes_2(input_files_prefix,output_hps)
 	#all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
 	#subdivisions=[1 for x in range(10)]
@@ -259,7 +260,7 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 			.filter(lambda (file,res): len(res)>27)
 			.map(lambda (file,res): (file,downsampling(res)) )
 			.map(lambda (file,res): (file,to_spectrum(res)) )
-			.map(lambda (file,spec): (file,to_lsh_dumb(spec)) )
+			.map(lambda (file,spec): (file,to_lsh_fixed_seed(spec,num_hp_arrs,num_hp_per_arr,spectrogram_width)) )
 			)
 		#print("Count: "+str(result.count()) )
 		#result=result.map(lambda (file,res):
