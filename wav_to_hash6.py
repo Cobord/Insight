@@ -84,8 +84,8 @@ def almost_raw_s3(bucket,filename,access_key,secret_key):
         raw_data=np.zeros(len_needed)
 	#s3_client=boto3.client('s3',aws_access_key_id=access_key,
 	#	aws_secret_access_key=secret_key,region_name='us-east-1')
-	#s3_client=boto3.client('s3')
-        #s3_client.download_file(bucket,filename,filename[8:])
+	s3_client=boto3.client('s3')
+        s3_client.download_file(bucket,filename,filename[8:])
 	#session=boto3.Session(aws_access_key_id=access_key,
 	#	aws_secret_access_key=secret_key,region_name='us-east-1')
 	#session=boto3.Session()
@@ -96,8 +96,8 @@ def almost_raw_s3(bucket,filename,access_key,secret_key):
         #conn=S3Connection(access_key,secret_key,host="localhost",port=9000,is_secure=False,calling_format=boto.s3.connection.OrdinaryCallingFormat())
 	#key=conn.get_bucket(bucket,validate=False).get_key(filename,validate=False)
 	#key.get_contents_to_filename(filename[8:])
-	s3 = boto3.resource('s3')
-	s3.Object(bucket,filename).download_file(filename[8:])
+	#s3 = boto3.resource('s3')
+	#s3.Object(bucket,filename).download_file(filename[8:])
 	#s3.meta.client.download_file(bucket,filename,filename[8:])
 	#conn = S3Connection(access_key,secret_key)
 	#bucket_obj = conn.get_bucket(bucket,validate=False)
@@ -147,6 +147,9 @@ def to_spectrum(modified_data):
 	fourier=np.append(np.real(fourier),np.imag(fourier))
 	#return to_return/math.sqrt((to_return**2).sum())
 	return fourier
+
+def to_lsh_dumb(spectra):
+	return [spectra[i] for i in range(5)]
 
 # from a spectral data, the eqs defining hyperplanes
 # this returns LSH
@@ -232,9 +235,9 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 	from elasticsearch import Elasticsearch
 	from awscredentials import access_key,secret_key
 	es = Elasticsearch([{'host':'localhost','port':9200}])
-	(all_hyperplanes_mat,num_hp_per_arrangement)=construct_hyperplanes_2(input_files_prefix,output_hps)
-	all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
-	subdivisions=[1 for x in range(10)]
+	#(all_hyperplanes_mat,num_hp_per_arrangement)=construct_hyperplanes_2(input_files_prefix,output_hps)
+	#all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
+	#subdivisions=[1 for x in range(10)]
 	s3=boto3.resource('s3')
 	my_bucket=s3.Bucket("sound-files-lsh-191102976")
 	all_s3_filenames=[]
@@ -252,19 +255,20 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 				(bucket,file)=all_s3_filenames[i+j]
 				current_subbatch.append( (file,almost_raw_s3(bucket,file,access_key,secret_key)))
 			all_batches.extend(current_subbatch)
-		result=sc.parallelize(all_batches)
+		result=(sc.parallelize(all_batches)
+			.filter(lambda (file,res): len(res)>27)
+			.map(lambda (file,res): (file,downsampling(res)) )
+			.map(lambda (file,res): (file,to_spectrum(res)) )
+			.map(lambda (file,spec): (file,to_lsh_dumb(spec)) )
+			)
 		#print("Count: "+str(result.count()) )
-		result=result.filter(lambda (file,res): len(res)>27)
-		result=result.map(lambda (file,res): (file,downsampling(res)) )
-		result=result.map(lambda (file,res): (file,to_spectrum(res)) )
-		#print("Count: "+str(result.count()) )
-		result=result.map(lambda (file,res):
-        		(file,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
+		#result=result.map(lambda (file,res):
+        	#	(file,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
 		#collected=result.collect()
 		#for (filename,res) in collected:
 		#	add_to_es(filename,res,es)
 		#result.foreach(lambda (filename,res): add_to_es(filename,res,es) )
-		result=result.repartition(1).map(lambda (filename,res): format_known_strings(filename,res))
+		result=result.map(lambda (filename,res): format_known_strings(filename,res))
 		result.saveAsTextFile(output_files_dest+("%i"%k))
 	return
 
