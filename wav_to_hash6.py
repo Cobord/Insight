@@ -248,6 +248,8 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 		if file_name.endswith('wav'):
 			all_s3_filenames.append((bucket_name,file_name))
 	batch_size=int(len(all_s3_filenames)/10)
+	#download_on_spark=sc.parallelize(all_s3_filenames[:20]).map(lambda (bucket_name,file_name): (file_name,almost_raw_s3(bucket_name,file_name,access_key,secret_key)) )
+	#print(download_on_spark.collect())
 	for k in range(10):
 		all_batches=[]
 		for i in range(k*batch_size,k*batch_size+batch_size,5):
