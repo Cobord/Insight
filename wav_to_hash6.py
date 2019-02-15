@@ -149,7 +149,9 @@ def to_spectrum(modified_data):
 	return fourier
 
 def to_lsh_fixed_seed(spectra,num_hp_arrs,num_hp_per_arr,spectrogram_width):
-	return [spectra[i] for i in range(5)]
+	hyperplanes_height=num_hp_arrs*num_hp_per_arr
+	hyperplanes_matrix=np.random.RandomState(0).randn(hyperplanes_height,spectrogram_width)
+	return to_lsh(spectra,hyperplanes_matrix,num_hp_per_arr)
 
 # from a spectral data, the eqs defining hyperplanes
 # this returns LSH
@@ -236,8 +238,8 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 	from awscredentials import access_key,secret_key
 	es = Elasticsearch([{'host':'localhost','port':9200}])
 	(num_hp_arrs,num_hp_per_arr,spectrogram_width)=find_hyperplane_dims(input_files_prefix)
-	#(all_hyperplanes_mat,num_hp_per_arrangement)=construct_hyperplanes_2(input_files_prefix,output_hps)
-	#all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
+	(all_hyperplanes_mat,num_hp_per_arrangement)=construct_hyperplanes_2(input_files_prefix,output_hps)
+	all_hyperplanes_BC=sc.broadcast(all_hyperplanes_mat)
 	#subdivisions=[1 for x in range(10)]
 	s3=boto3.resource('s3')
 	my_bucket=s3.Bucket("sound-files-lsh-191102976")
@@ -249,7 +251,6 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 			all_s3_filenames.append((bucket_name,file_name))
 	batch_size=int(len(all_s3_filenames)/10)
 	#download_on_spark=sc.parallelize(all_s3_filenames[:20]).map(lambda (bucket_name,file_name): (file_name,almost_raw_s3(bucket_name,file_name,access_key,secret_key)) )
-	#print(download_on_spark.collect())
 	for k in range(10):
 		all_batches=[]
 		for i in range(k*batch_size,k*batch_size+batch_size,5):
@@ -262,19 +263,20 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 			.filter(lambda (file,res): len(res)>27)
 			.map(lambda (file,res): (file,downsampling(res)) )
 			.map(lambda (file,res): (file,to_spectrum(res)) )
-			.map(lambda (file,spec): (file,to_lsh_fixed_seed(spec,num_hp_arrs,num_hp_per_arr,spectrogram_width)) )
 			)
-		#print("Count: "+str(result.count()) )
-		#result=result.map(lambda (file,res):
-        	#	(file,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
+		#result=result.map(lambda (file,spec): (file,to_lsh_fixed_seed(spec,num_hp_arrs,num_hp_per_arr,spectrogram_width)) )
+		result=result.map(lambda (file,res):
+        		(file,to_lsh(res,all_hyperplanes_BC.value,num_hp_per_arrangement)))
 		#collected=result.collect()
 		#for (filename,res) in collected:
 		#	add_to_es(filename,res,es)
 		#result.foreach(lambda (filename,res): add_to_es(filename,res,es) )
 		result=result.map(lambda (filename,res): format_known_strings(filename,res))
 		#result.saveAsTextFile(output_files_dest+("%i"%k))
+		file_appended=open("try_hashes2.txt","a+")
 		collected=result.collect()
-		print(collected)
+		for item in collected:
+			file_appended.write(item+"\n")
 	return
 
 if __name__ == "__main__":
