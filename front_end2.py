@@ -30,8 +30,7 @@ def upload_file():
 	if request.method == 'POST':
 		# check if the post request has the file part
 		if 'file' not in request.files:
-			flash('No file part')
-			return redirect(request.url)
+			return redirect(url_for('exampleFile'))
 		file = request.files['file']
 		# if user does not select file, browser also
 		# submit an empty part without filename
@@ -50,6 +49,7 @@ def upload_file():
 	<title>WaveSim</title>
 	<h1 style="color:blue;font-size:300%;" class="centered logo-format">WaveSim</h1>
 	<h1>Upload in wav format only</h1>
+	<h1>If you just click upload without a file, will use the preset example</h1>
 	<form method=post enctype=multipart/form-data>
 	<input type=file name=file>
 	<input type=submit value=Upload>
@@ -66,9 +66,15 @@ def uploadedFile(filename):
 	#potentials=save_elastic_search2.get_any_matches2(my_hashes)
 	scored_cands=wav_to_hash_flask.score_false_positives(potentials,my_spec)
 	scored_cands=scored_cands[:10]
-	#return '''
-	#<!doctype html>
-	#<title>Uploaded File</title>
-	#<h1>Placeholder %s</h1>
-	#'''%str(potentials)
 	return render_template("wavesim.html",scored_matches=scored_cands,found_match=(len(scored_cands)>0),your_wav=os.path.abspath(save_loc) )
+
+@app.route('/exampleFile')
+def exampleFile():
+        extension='wav'
+        save_loc=os.path.join(UPLOAD_FOLDER,'example.'+extension)
+        (my_hashes,my_spec)=wav_to_hash_flask.lsh_and_spectra_of_unknown(save_loc,'all_hp.npy')
+        potentials=save_elastic_search2.get_any_matches(my_hashes[0],my_hashes[1],my_hashes[2],my_hashes[3],my_hashes[4])
+        #potentials=save_elastic_search2.get_any_matches2(my_hashes)
+        scored_cands=wav_to_hash_flask.score_false_positives(potentials,my_spec)
+        scored_cands=scored_cands[:10]
+        return render_template("wavesim.html",scored_matches=scored_cands,found_match=(len(scored_cands)>0),your_wav=os.path.abspath(save_loc) )
