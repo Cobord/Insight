@@ -20,7 +20,13 @@ from awscredentials import access_key, secret_key
 #        .setMaster("local")
 #        .setAppName("spectra")
 #        .set("spark.executor.memory","1g"))
-conf = SparkConf().setAppName("spectra").set("spark.executor.memory","3g")
+conf = (SparkConf().setAppName("spectra")
+	.set("spark.executor.memory","5g")
+	.set("spark.memory.offHeap.enabled","true")
+	.set("spark.memory.offHeap.size","2g")
+	.set("spark.broadcast.blockSize","10m")
+	.set("spark.files.overwrite","true")
+	)
 sc = SparkContext(conf=conf)
 sc.setSystemProperty("com.amazonaws.services.s3.enableV4","true")
 sc._jsc.hadoopConfiguration().set("fs.s3a.access.key",access_key)
@@ -249,9 +255,10 @@ def create_library(input_files_prefix="wavFiles/",input_file_list="wavFilesList.
 		file_name=str(object.key)
 		if file_name.endswith('wav'):
 			all_s3_filenames.append((bucket_name,file_name))
-	batch_size=int(len(all_s3_filenames)/10)
+	num_divisions=20
+	batch_size=int(len(all_s3_filenames)/num_divisions)
 	#download_on_spark=sc.parallelize(all_s3_filenames[:20]).map(lambda (bucket_name,file_name): (file_name,almost_raw_s3(bucket_name,file_name,access_key,secret_key)) )
-	for k in range(10):
+	for k in range(num_divisions):
 		all_batches=[]
 		for i in range(k*batch_size,k*batch_size+batch_size,5):
 			current_subbatch=[]
